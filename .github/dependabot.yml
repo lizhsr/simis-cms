@@ -22,6 +22,15 @@ updates:
       # Held at 3.2.x: 3.3+ throws on undefined properties (breaks WorkflowTaskTest)
       - dependency-name: "org.apache.commons:commons-jexl3"
         versions: [">=3.3.0"]
+      # Held: 46.x removes com.squareup.square.models entirely (58 compile errors
+      # across the Square payments integration). No CVE on the pinned version.
+      # Revisit on: a CVE, Square EOL'ing the legacy SDK, or needing new features.
+      - dependency-name: "com.squareup:square"
+        update-types: ["version-update:semver-major"]
+      # Held: Tomcat 10+ moves the servlet API from javax.* to jakarta.*, which
+      # this app is not migrated for. Revisit with the Jakarta EE migration.
+      - dependency-name: "org.apache.tomcat:tomcat-servlet-api"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
