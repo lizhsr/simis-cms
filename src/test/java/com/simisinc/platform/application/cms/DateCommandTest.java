@@ -74,6 +74,7 @@ class DateCommandTest {
   void addDays() {
     Timestamp now = new Timestamp(System.currentTimeMillis());
     Timestamp in10Days = DateCommand.addDays(now, 10);
-    Assertions.assertEquals("within 10 days", DateCommand.relative(in10Days));
+    // timeago 4.x renders 10 days as "within one week"; 3.x rendered "within 10 days"
+    Assertions.assertEquals("within one week", DateCommand.relative(in10Days));
   }
 }
