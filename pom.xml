@@ -81,7 +81,7 @@
     <pushy.version>0.15.6</pushy.version>
     <rabbitmq.version>5.34.0</rabbitmq.version>
     <resilience4j.version>2.4.0</resilience4j.version>
-    <restfb.version>2023.8.0</restfb.version>
+    <restfb.version>2026.8.0</restfb.version>
     <rome-rss.version>2.1.0</rome-rss.version>
     <slf4j.version>2.0.18</slf4j.version>
     <square.version>24.0.0.20220921</square.version>
