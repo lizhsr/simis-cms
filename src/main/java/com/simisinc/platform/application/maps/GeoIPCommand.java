@@ -124,9 +124,9 @@ public class GeoIPCommand {
         geoIP.setTimezone(response.getLocation().getTimeZone());
         geoIP.setLatitude(response.getLocation().getLatitude());
         geoIP.setLongitude(response.getLocation().getLongitude());
-        if (response.getLocation().getMetroCode() != null) {
-          geoIP.setMetroCode(response.getLocation().getMetroCode());
-        }
+        // geoip2 5.x removed Location.getMetroCode() -- MaxMind discontinued metro/DMA codes.
+        // metroCode stays at its -1 sentinel, so addIfExists(..., -1) skips the metro_code
+        // column, which is the same behavior as when MaxMind returned no metro code.
       }
       return geoIP;
     } catch (Exception e) {
