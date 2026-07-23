@@ -16,12 +16,16 @@
 
 package com.simisinc.platform.presentation.controller;
 
+import java.io.IOException;
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Part;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -58,6 +62,9 @@ public class WidgetContext implements Serializable {
   private String widgetName = null;
   private String redirect = null;
   private boolean handledResponse = false;
+  // Success flag for JSON service endpoints. Defaults to true so existing endpoints, which never
+  // set it, are treated as successful; the JSON dispatch maps a false value to an HTTP 400.
+  private boolean success = true;
 
   private String message = null;
   private String successMessage = null;
@@ -83,8 +90,30 @@ public class WidgetContext implements Serializable {
     return request;
   }
 
+  /** Returns the multipart parts of the request, for JSON service endpoints that accept uploads. */
+  public Collection<Part> getParts() throws IOException, ServletException {
+    return request.getParts();
+  }
+
+  /** Returns a named multipart part of the request, or null if absent. */
+  public Part getPart(String name) throws IOException, ServletException {
+    return request.getPart(name);
+  }
+
   public HttpServletResponse getResponse() {
     return response;
+  }
+
+  /**
+   * Whether a JSON service endpoint completed successfully. Defaults to true; an endpoint sets it
+   * false to signal a client error, which the JSON dispatch translates to an HTTP 400 response.
+   */
+  public boolean isSuccess() {
+    return success;
+  }
+
+  public void setSuccess(boolean success) {
+    this.success = success;
   }
 
   public String getUniqueId() {
