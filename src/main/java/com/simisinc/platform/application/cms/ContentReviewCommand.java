@@ -80,9 +80,19 @@ public class ContentReviewCommand {
   public static void approve(Content content, long approverId, String releaseReference) throws DataException {
     requireSubmitted(content);
     requireApproverIsNotSubmitter(content, approverId);
+    String reference = StringUtils.trimToNull(releaseReference);
+    // The column is VARCHAR(255); reject an over-long value rather than letting the database throw
+    // mid-approval, which would leave the approver without a clear reason.
+    if (reference != null && reference.length() > MAX_RELEASE_REFERENCE_LENGTH) {
+      throw new DataException(
+          "The release authority reference must be " + MAX_RELEASE_REFERENCE_LENGTH + " characters or fewer");
+    }
     content.setApprovedBy(approverId);
-    content.setReleaseReference(StringUtils.trimToNull(releaseReference));
+    content.setReleaseReference(reference);
   }
+
+  /** Matches the {@code release_reference} column width. */
+  public static final int MAX_RELEASE_REFERENCE_LENGTH = 255;
 
   /**
    * An approver rejects a submitted draft, sending it back to the author to revise and resubmit.
@@ -123,6 +133,55 @@ public class ContentReviewCommand {
     }
     return isApproved(content);
   }
+
+  /**
+   * Which review action the given viewer should be offered for this content, so the decision lives here
+   * rather than in a JSP expression. Returns one of the {@code OFFER_*} constants.
+   *
+   * <p>The separation-of-duties rule is reflected in the UI as well as enforced on the action: a
+   * submitter looking at their own pending draft is told it is awaiting someone else, never offered the
+   * approve button. Offering a button the action would reject is a worse experience and a worse control
+   * story than not offering it.
+   */
+  public static String offerFor(Content content, long viewerId, boolean reviewRequired) {
+    if (content == null || StringUtils.isBlank(content.getDraftContent())) {
+      return OFFER_NONE;
+    }
+    if (!reviewRequired) {
+      // Ungoverned: the classic direct-publish affordance.
+      return OFFER_PUBLISH;
+    }
+    if (!isPendingReview(content)) {
+      // A draft that has not been submitted yet -- its author sends it for review.
+      return OFFER_SUBMIT;
+    }
+    if (viewerId > 0 && viewerId == content.getSubmittedBy()) {
+      // Pending, but this viewer submitted it: they cannot decide their own submission.
+      return OFFER_AWAITING_OTHER;
+    }
+    return OFFER_DECIDE;
+  }
+
+  /**
+   * Whether a save may publish straight to the live page, skipping review. When governed publishing is
+   * on the answer is always no: the only route to live is submit → approve, so an editor's Save /
+   * Publish Immediately button degrades to a draft save rather than becoming a bypass. Hot-editing a
+   * live page is exactly the hole that would otherwise defeat the whole control.
+   */
+  public static boolean mayPublishDirectly(boolean reviewRequired) {
+    return !reviewRequired;
+  }
+
+  /** No draft, so nothing to offer. */
+  public static final String OFFER_NONE = "none";
+  /** Governed publishing is off: offer the direct publish button. */
+  public static final String OFFER_PUBLISH = "publish";
+  /** A draft not yet submitted: offer "submit for review". */
+  public static final String OFFER_SUBMIT = "submit";
+  /** Pending review, viewed by its submitter: show status only (separation of duties). */
+  public static final String OFFER_AWAITING_OTHER = "awaiting";
+  /** Pending review, viewed by someone else: offer approve / reject. */
+  public static final String OFFER_DECIDE = "decide";
 
   private static void requireSubmitted(Content content) throws DataException {
     if (!isPendingReview(content)) {

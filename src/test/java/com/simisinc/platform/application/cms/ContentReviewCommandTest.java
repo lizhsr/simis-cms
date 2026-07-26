@@ -126,6 +126,64 @@ class ContentReviewCommandTest {
   }
 
   @Test
+  void anOverlongReleaseReferenceIsRejectedNotTruncated() throws DataException {
+    // The column is VARCHAR(255). Fail with a clear message rather than letting the database throw
+    // mid-approval -- and never silently truncate an authority reference that is audit evidence.
+    Content content = draft();
+    ContentReviewCommand.submitForReview(content, AUTHOR);
+    String tooLong = "x".repeat(ContentReviewCommand.MAX_RELEASE_REFERENCE_LENGTH + 1);
+    assertThrows(DataException.class, () -> ContentReviewCommand.approve(content, APPROVER, tooLong));
+    assertFalse(ContentReviewCommand.isApproved(content), "a rejected approval must not approve");
+
+    // The maximum length itself is accepted.
+    String atLimit = "x".repeat(ContentReviewCommand.MAX_RELEASE_REFERENCE_LENGTH);
+    ContentReviewCommand.approve(content, APPROVER, atLimit);
+    assertEquals(atLimit, content.getReleaseReference());
+  }
+
+  @Test
+  void directPublishIsUnavailableWhenReviewIsRequired() {
+    // The bypass that would otherwise defeat the whole control: an editor's Save / Publish Immediately
+    // must not write straight to the live page when governed publishing is on.
+    assertTrue(ContentReviewCommand.mayPublishDirectly(false), "ungoverned sites publish directly as before");
+    assertFalse(ContentReviewCommand.mayPublishDirectly(true), "governed sites have no direct-publish path");
+  }
+
+  @Test
+  void offerIsNoneWithoutADraft() {
+    Content published = new Content();
+    published.setContent("<p>live</p>");
+    assertEquals(ContentReviewCommand.OFFER_NONE, ContentReviewCommand.offerFor(published, AUTHOR, true));
+    assertEquals(ContentReviewCommand.OFFER_NONE, ContentReviewCommand.offerFor(null, AUTHOR, true));
+  }
+
+  @Test
+  void offerIsDirectPublishWhenReviewIsNotRequired() {
+    assertEquals(ContentReviewCommand.OFFER_PUBLISH, ContentReviewCommand.offerFor(draft(), AUTHOR, false));
+  }
+
+  @Test
+  void offerIsSubmitForAnUnsubmittedDraftUnderReview() {
+    assertEquals(ContentReviewCommand.OFFER_SUBMIT, ContentReviewCommand.offerFor(draft(), AUTHOR, true));
+  }
+
+  @Test
+  void theSubmitterIsNotOfferedTheApproveButtonForTheirOwnDraft() throws DataException {
+    // Separation of duties reflected in the UI: the author sees "awaiting review", not approve/reject.
+    Content content = draft();
+    ContentReviewCommand.submitForReview(content, AUTHOR);
+    assertEquals(ContentReviewCommand.OFFER_AWAITING_OTHER,
+        ContentReviewCommand.offerFor(content, AUTHOR, true));
+  }
+
+  @Test
+  void anotherReviewerIsOfferedTheDecision() throws DataException {
+    Content content = draft();
+    ContentReviewCommand.submitForReview(content, AUTHOR);
+    assertEquals(ContentReviewCommand.OFFER_DECIDE, ContentReviewCommand.offerFor(content, APPROVER, true));
+  }
+
+  @Test
   void publishGateRequiresApprovalWhenReviewIsRequired() throws DataException {
     Content content = draft();
     // A brand-new draft that was never submitted cannot publish under review.
