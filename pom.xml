@@ -38,7 +38,7 @@
     <bucket4j.version>8.10.1</bucket4j.version>
     <caffeine.version>3.2.4</caffeine.version>
     <apache-http.version>5.4.3</apache-http.version>
-    <classgraph.version>4.8.184</classgraph.version>
+    <classgraph.version>4.8.185</classgraph.version>
     <commons-beanutils.version>1.11.0</commons-beanutils.version>
     <commons-codec.version>1.22.0</commons-codec.version>
     <commons-collections4.version>4.5.0</commons-collections4.version>
