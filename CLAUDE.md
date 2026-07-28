@@ -155,36 +155,6 @@ mv UPGRADE_20260725.1002__web_page_scheduling.sql UPGRADE_20260725.1006__web_pag
 
 Flyway validates all migrations before running any — one duplicate = entire database init blocked.
 
-### Deployment Verification
-
-Code changes MUST include a visible marker to confirm they deployed:
-
-```java
-// In AuthenticateLoginCommand.java:
-public static final String INVALID_CREDENTIALS = "[TESTING] The account information provided did not match our records. Please try again.";
-// After confirming "[TESTING]" appears in logs, remove before committing to main
-```
-
-Verify deployment:
-```bash
-docker-compose logs app | grep "[TESTING]"
-# If [TESTING] marker appears, code IS deployed
-# If missing, build failed silently — restart with full sequence above
-```
-
-### Testing & Auth Bypass (Temporary Only)
-
-Fresh databases initialize with `admin@example.com`. When testing without a password hash, `AuthenticateLoginCommand.java` includes a bypass:
-
-```java
-// [TESTING] Temporary bypass for admin@example.com
-if ("admin@example.com".equalsIgnoreCase(username)) {
-  verified = true;
-}
-```
-
-**MUST be removed before production.** Tagged with `[TESTING]` comments for detection.
-
 ### Automated CI Gates (Required for Merges)
 
 The following checks run in CI and **BLOCK PRs from merging** if they fail:

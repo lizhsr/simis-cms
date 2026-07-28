@@ -149,15 +149,12 @@ public class WebContainerCommand implements Serializable {
               continue;
             }
             // Validate the token and fail immediately
-            boolean isLoginAttempt = request.getParameter("email") != null && request.getParameter("password") != null;
-            if (!isLoginAttempt) {
-              String formToken = request.getParameter("token");
-              if (!userSession.getFormToken().equals(formToken)) {
-                controllerSession.clearAllWidgetData();
-                controllerSession.addWidgetData(thisWidgetUniqueId, MESSAGE, "Your session may have expired before submitting the form, please try again");
-                response.sendRedirect(contextPath + containerRenderInfo.getName());
-                return true;
-              }
+            String formToken = request.getParameter("token");
+            if (!userSession.getFormToken().equals(formToken)) {
+              controllerSession.clearAllWidgetData();
+              controllerSession.addWidgetData(thisWidgetUniqueId, MESSAGE, "Your session may have expired before submitting the form, please try again");
+              response.sendRedirect(contextPath + containerRenderInfo.getName());
+              return true;
             }
           }
 
