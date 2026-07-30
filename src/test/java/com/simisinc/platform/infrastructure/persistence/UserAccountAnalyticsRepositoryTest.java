@@ -245,7 +245,9 @@ class UserAccountAnalyticsRepositoryTest {
           + "mfa_secret VARCHAR(64), "
           + "mfa_enabled BOOLEAN DEFAULT false, "
           + "failed_attempt_count INTEGER DEFAULT 0, "
-          + "locked_until TIMESTAMP(3))");
+          + "locked_until TIMESTAMP(3), "
+          + "last_password_changed_at TIMESTAMP(3), "
+          + "suspension_reason VARCHAR(255))");
 
       statement.execute("CREATE TABLE user_roles ("
           + "user_role_id BIGSERIAL PRIMARY KEY, "
