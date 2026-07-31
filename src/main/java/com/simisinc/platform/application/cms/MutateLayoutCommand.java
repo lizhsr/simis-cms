@@ -48,6 +48,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.simisinc.platform.application.DataException;
 import com.simisinc.platform.domain.model.cms.WebPage;
 import com.simisinc.platform.infrastructure.persistence.cms.WebPageRepository;
+import com.simisinc.platform.presentation.widgets.cms.TableWidget;
 
 /**
  * Structural mutations for the visual editor (Project #6, Phase 4): add, remove, and configure
@@ -97,13 +98,14 @@ public class MutateLayoutCommand {
    *                        sections
    * @param sectionClass    optional Foundation CSS class for the new section element; null or blank
    *                        means no class attribute
+   * @param modifiedBy      user id of the person making this change
    */
-  public static void addSection(WebPage webPage, int afterSectionIdx, String sectionClass)
+  public static void addSection(WebPage webPage, int afterSectionIdx, String sectionClass, long modifiedBy)
       throws DataException {
     if (StringUtils.isNotBlank(sectionClass)) {
       validateCssClass(sectionClass);
     }
-    mutate(webPage, doc -> {
+    mutate(webPage, modifiedBy, doc -> {
       Element pageEl = doc.getDocumentElement();
       List<Element> sections = childElements(pageEl, "section");
       if (afterSectionIdx < -1 || afterSectionIdx >= sections.size()) {
@@ -124,8 +126,8 @@ public class MutateLayoutCommand {
    * Removes the section at {@code sectionIdx}. Fails if the section contains any widgets (in any
    * column) — the caller must remove all widgets first.
    */
-  public static void removeSection(WebPage webPage, int sectionIdx) throws DataException {
-    mutate(webPage, doc -> {
+  public static void removeSection(WebPage webPage, int sectionIdx, long modifiedBy) throws DataException {
+    mutate(webPage, modifiedBy, doc -> {
       Element pageEl = doc.getDocumentElement();
       List<Element> sections = childElements(pageEl, "section");
       checkSectionIdx(sections, sectionIdx);
@@ -142,13 +144,13 @@ public class MutateLayoutCommand {
   /**
    * Replaces the {@code class} attribute on the section at {@code sectionIdx}.
    */
-  public static void setSectionClass(WebPage webPage, int sectionIdx, String sectionClass)
+  public static void setSectionClass(WebPage webPage, int sectionIdx, String sectionClass, long modifiedBy)
       throws DataException {
     if (StringUtils.isBlank(sectionClass)) {
       throw new DataException("Section class is required");
     }
     validateCssClass(sectionClass);
-    mutate(webPage, doc -> {
+    mutate(webPage, modifiedBy, doc -> {
       List<Element> sections = childElements(doc.getDocumentElement(), "section");
       checkSectionIdx(sections, sectionIdx);
       sections.get(sectionIdx).setAttribute("class", sectionClass);
@@ -163,12 +165,13 @@ public class MutateLayoutCommand {
    * @param afterColumnIdx index within the section to insert after; {@code -1} prepends
    * @param columnClass    Foundation grid class for the new column; defaults to {@code "small-12 cell"}
    *                       if blank
+   * @param modifiedBy     user id of the person making this change
    */
-  public static void addColumn(WebPage webPage, int sectionIdx, int afterColumnIdx, String columnClass)
-      throws DataException {
+  public static void addColumn(WebPage webPage, int sectionIdx, int afterColumnIdx, String columnClass,
+      long modifiedBy) throws DataException {
     String effectiveClass = StringUtils.isNotBlank(columnClass) ? columnClass : "small-12 cell";
     validateCssClass(effectiveClass);
-    mutate(webPage, doc -> {
+    mutate(webPage, modifiedBy, doc -> {
       List<Element> sections = childElements(doc.getDocumentElement(), "section");
       checkSectionIdx(sections, sectionIdx);
       Element sectionEl = sections.get(sectionIdx);
@@ -186,8 +189,9 @@ public class MutateLayoutCommand {
    * Removes the column at {@code sectionIdx}:{@code columnIdx}. Fails if the column contains any
    * widgets.
    */
-  public static void removeColumn(WebPage webPage, int sectionIdx, int columnIdx) throws DataException {
-    mutate(webPage, doc -> {
+  public static void removeColumn(WebPage webPage, int sectionIdx, int columnIdx, long modifiedBy)
+      throws DataException {
+    mutate(webPage, modifiedBy, doc -> {
       List<Element> sections = childElements(doc.getDocumentElement(), "section");
       checkSectionIdx(sections, sectionIdx);
       Element sectionEl = sections.get(sectionIdx);
@@ -204,13 +208,13 @@ public class MutateLayoutCommand {
   /**
    * Replaces the {@code class} attribute on the column at {@code sectionIdx}:{@code columnIdx}.
    */
-  public static void setColumnClass(WebPage webPage, int sectionIdx, int columnIdx, String columnClass)
-      throws DataException {
+  public static void setColumnClass(WebPage webPage, int sectionIdx, int columnIdx, String columnClass,
+      long modifiedBy) throws DataException {
     if (StringUtils.isBlank(columnClass)) {
       throw new DataException("Column class is required");
     }
     validateCssClass(columnClass);
-    mutate(webPage, doc -> {
+    mutate(webPage, modifiedBy, doc -> {
       List<Element> sections = childElements(doc.getDocumentElement(), "section");
       checkSectionIdx(sections, sectionIdx);
       List<Element> columns = childElements(sections.get(sectionIdx), "column");
@@ -228,9 +232,10 @@ public class MutateLayoutCommand {
    * @param widgetName     widget name; must exist in the widget library
    * @param prefsJson      optional JSON object of initial preference key/value pairs, e.g.
    *                       {@code {"uniqueId":"my-content"}}; null or blank means no preferences
+   * @param modifiedBy     user id of the person making this change
    */
   public static void addWidget(WebPage webPage, int sectionIdx, int columnIdx, int afterWidgetIdx,
-      String widgetName, String prefsJson) throws DataException {
+      String widgetName, String prefsJson, long modifiedBy) throws DataException {
     if (StringUtils.isBlank(widgetName)) {
       throw new DataException("Widget name is required");
     }
@@ -238,7 +243,8 @@ public class MutateLayoutCommand {
       throw new DataException("Unknown widget: " + widgetName);
     }
     Map<String, String> prefs = parsePrefsJson(prefsJson);
-    mutate(webPage, doc -> {
+    validateWidgetPreferenceValues(widgetName, prefs);
+    mutate(webPage, modifiedBy, doc -> {
       List<Element> sections = childElements(doc.getDocumentElement(), "section");
       checkSectionIdx(sections, sectionIdx);
       List<Element> columns = childElements(sections.get(sectionIdx), "column");
@@ -262,9 +268,9 @@ public class MutateLayoutCommand {
   /**
    * Removes the widget at {@code sectionIdx}:{@code columnIdx}:{@code widgetIdx}.
    */
-  public static void removeWidget(WebPage webPage, int sectionIdx, int columnIdx, int widgetIdx)
-      throws DataException {
-    mutate(webPage, doc -> {
+  public static void removeWidget(WebPage webPage, int sectionIdx, int columnIdx, int widgetIdx,
+      long modifiedBy) throws DataException {
+    mutate(webPage, modifiedBy, doc -> {
       List<Element> sections = childElements(doc.getDocumentElement(), "section");
       checkSectionIdx(sections, sectionIdx);
       List<Element> columns = childElements(sections.get(sectionIdx), "column");
@@ -281,15 +287,16 @@ public class MutateLayoutCommand {
    * {@code widgetIdx}. Existing keys are updated; new keys are appended. Keys not in
    * {@code prefsJson} are left unchanged.
    *
-   * @param prefsJson JSON object of preference key/value pairs to merge
+   * @param prefsJson  JSON object of preference key/value pairs to merge
+   * @param modifiedBy user id of the person making this change
    */
   public static void setWidgetPreferences(WebPage webPage, int sectionIdx, int columnIdx,
-      int widgetIdx, String prefsJson) throws DataException {
+      int widgetIdx, String prefsJson, long modifiedBy) throws DataException {
     Map<String, String> prefs = parsePrefsJson(prefsJson);
     if (prefs.isEmpty()) {
       throw new DataException("At least one preference is required");
     }
-    mutate(webPage, doc -> {
+    mutate(webPage, modifiedBy, doc -> {
       List<Element> sections = childElements(doc.getDocumentElement(), "section");
       checkSectionIdx(sections, sectionIdx);
       List<Element> columns = childElements(sections.get(sectionIdx), "column");
@@ -298,6 +305,7 @@ public class MutateLayoutCommand {
       List<Element> widgets = childElements(colEl, "widget");
       checkWidgetIdx(widgets, widgetIdx, sectionIdx, columnIdx);
       Element widgetEl = widgets.get(widgetIdx);
+      validateWidgetPreferenceValues(widgetEl.getAttribute("name"), prefs);
       for (Map.Entry<String, String> e : prefs.entrySet()) {
         List<Element> existing = childElements(widgetEl, e.getKey());
         if (!existing.isEmpty()) {
@@ -318,7 +326,7 @@ public class MutateLayoutCommand {
     void apply(Document doc) throws DataException;
   }
 
-  private static void mutate(WebPage webPage, DomMutation mutation) throws DataException {
+  private static void mutate(WebPage webPage, long modifiedBy, DomMutation mutation) throws DataException {
     if (webPage == null || webPage.getId() == -1) {
       throw new DataException("Page not found");
     }
@@ -348,7 +356,10 @@ public class MutateLayoutCommand {
 
       webPage.setDraftPageXml(sw.toString().trim());
       webPage.setDraft(true);
-      WebPageRepository.save(webPage);
+      webPage.setModifiedBy(modifiedBy);
+      if (WebPageRepository.save(webPage) == null) {
+        throw new DataException("Could not save layout changes for " + webPage.getLink());
+      }
       WebPageXmlLayoutCommand.removeCustomPage(webPage.getLink());
     } catch (DataException e) {
       throw e;
@@ -454,6 +465,30 @@ public class MutateLayoutCommand {
   private static void validatePrefKey(String key) throws DataException {
     if (!PREF_KEY_PATTERN.matcher(key).matches()) {
       throw new DataException("Invalid preference key '" + key + "': must start with a letter and contain only alphanumeric characters");
+    }
+  }
+
+  /**
+   * Widget-specific value validation, layered on top of the generic key-allowlist in
+   * {@link #parsePrefsJson}. Most preference values are opaque strings this class has no business
+   * inspecting, but a few widgets store structured data whose shape/size matters for safe rendering
+   * downstream -- this is the boundary where that gets enforced, so no caller (addWidget,
+   * setWidgetPreferences, or anything added later) can persist it unchecked.
+   *
+   * <p>Called before any DOM mutation, so a rejected value never reaches {@code draftPageXml}.
+   *
+   * @param widgetName the widget's registered name (widget-library.xml {@code name} attribute)
+   * @param prefs      the preference key/value pairs about to be written
+   */
+  private static void validateWidgetPreferenceValues(String widgetName, Map<String, String> prefs)
+      throws DataException {
+    if (TableWidget.WIDGET_NAME.equals(widgetName) && prefs.containsKey("tableData")) {
+      String tableDataJson = prefs.get("tableData");
+      if (!TableWidget.isValidTableData(tableDataJson)) {
+        throw new DataException("Invalid table data: expected a JSON object with 'headers' and 'rows' arrays, "
+            + "at most " + TableWidget.MAX_ROWS + " rows, " + TableWidget.MAX_COLUMNS + " columns, and "
+            + TableWidget.MAX_CELL_LENGTH + " characters per header/cell");
+      }
     }
   }
 }

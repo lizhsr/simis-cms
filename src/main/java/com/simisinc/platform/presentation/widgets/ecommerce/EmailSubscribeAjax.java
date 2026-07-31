@@ -17,13 +17,20 @@
 package com.simisinc.platform.presentation.widgets.ecommerce;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 
 import com.sanctionco.jmail.JMail;
 import com.simisinc.platform.application.DataException;
+import com.simisinc.platform.application.RateLimitCommand;
+import com.simisinc.platform.application.cms.CaptchaCommand;
 import com.simisinc.platform.application.mailinglists.SaveEmailCommand;
 import com.simisinc.platform.domain.model.mailinglists.Email;
+import com.simisinc.platform.domain.model.mailinglists.MailingList;
+import com.simisinc.platform.infrastructure.persistence.mailinglists.MailingListRepository;
 import com.simisinc.platform.presentation.controller.WidgetContext;
 import com.simisinc.platform.presentation.widgets.GenericWidget;
 
@@ -60,6 +67,21 @@ public class EmailSubscribeAjax extends GenericWidget {
       return context;
     }
 
+    // Validate the captcha (issue #484 -- this endpoint had no bot protection at all, unlike the
+    // sibling EmailSubscribeWidget/FormWidget paths which already call this same check). Always
+    // required here: unlike a page-embedded widget instance, this JSON-service endpoint has no
+    // per-page preferences to make it optional, and the rendering JSP always shows a challenge.
+    if (!CaptchaCommand.validateRequest(context)) {
+      context.setJson("{\"status\":\"1\",\"message\":\"Please verify you're human before subscribing\"}");
+      return context;
+    }
+
+    // Rate limit by IP to prevent bot signup floods
+    if (!RateLimitCommand.isIpAllowedRightNow(context.getRequest().getRemoteAddr(), true)) {
+      context.setJson("{\"status\":\"1\",\"message\":\"" + RateLimitCommand.INVALID_ATTEMPTS + "\"}");
+      return context;
+    }
+
     // Populate the fields
     Email emailBean = new Email();
     emailBean.setEmail(emailValue);
@@ -79,9 +101,26 @@ public class EmailSubscribeAjax extends GenericWidget {
       emailBean.setModifiedBy(context.getUserId());
     }
 
+    // Issue #598: let a signup choose which public list(s) to join, once there's more than the
+    // one hardcoded "Newsletter" list to choose from. No online lists (a default/fresh install)
+    // preserves the exact previous behavior -- the single hardcoded-list save below.
+    List<MailingList> onlineLists = MailingListRepository.findOnlineLists();
+    List<MailingList> selectedLists = null;
+    if (onlineLists != null && !onlineLists.isEmpty()) {
+      selectedLists = resolveSelectedLists(context, onlineLists);
+      if (selectedLists.isEmpty()) {
+        context.setJson("{\"status\":\"1\",\"message\":\"Please choose at least one list to subscribe to\"}");
+        return context;
+      }
+    }
+
     // Save the record
     try {
-      SaveEmailCommand.saveEmail(emailBean);
+      if (selectedLists != null) {
+        SaveEmailCommand.saveEmail(emailBean, selectedLists);
+      } else {
+        SaveEmailCommand.saveEmail(emailBean);
+      }
       // Manage the related cookie
       context.getUserSession().setShowSiteNewsletterSignup(false);
     } catch (DataException e) {
@@ -92,5 +131,25 @@ public class EmailSubscribeAjax extends GenericWidget {
     // Return status ok
     context.setJson("{\"status\":\"0\"}");
     return context;
+  }
+
+  /**
+   * The subset of onlineLists whose id was submitted -- ignores any submitted id that doesn't
+   * match a currently public list, so a forged/stale id can never subscribe someone to a
+   * non-public list.
+   */
+  private List<MailingList> resolveSelectedLists(WidgetContext context, List<MailingList> onlineLists) {
+    String[] submittedIds = context.getParameterMap().get("mailingListId");
+    if (submittedIds == null || submittedIds.length == 0) {
+      return new ArrayList<>();
+    }
+    List<String> submitted = Arrays.asList(submittedIds);
+    List<MailingList> selected = new ArrayList<>();
+    for (MailingList mailingList : onlineLists) {
+      if (submitted.contains(String.valueOf(mailingList.getId()))) {
+        selected.add(mailingList);
+      }
+    }
+    return selected;
   }
 }

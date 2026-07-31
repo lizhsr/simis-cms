@@ -359,6 +359,22 @@ summary:focus-visible,
   color: var(--sc-text-muted);
 }
 
+/* Foundation's default .help-text uses a negative margin-top to tuck it
+   under a plain <input>. That collapses to no visible gap (or worse) after
+   an .input-group wrapper (the icon + input used by type="url" fields), so
+   help text reads as jammed against the field above it. A small positive
+   gap reads correctly after both a plain input and an .input-group. */
+.help-text {
+  margin-top: var(--sc-space-1);
+  /* site-properties-editor.jsp's Value column is a <td nowrap>, which forces
+     white-space: nowrap onto every descendant, including this paragraph. A
+     help-text longer than a couple of words runs off the right edge instead
+     of wrapping, forcing a horizontal scrollbar to read it. The nowrap is
+     only meant for the input controls themselves, not their help text. */
+  white-space: normal;
+  max-width: 60ch;
+}
+
 /* Foundation renders the select arrow as an embedded SVG data URI in a
    dark ink that disappears on a dark field. */
 :root[data-theme="dark"] select {

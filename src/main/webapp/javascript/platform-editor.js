@@ -125,10 +125,22 @@
   function deactivateQuill(keepChanges) {
     if (!activeQuill) return;
     var container = activeQuill.container && activeQuill.container.closest('.sc-quill-editor-container');
-    if (!keepChanges && quillContentEl) {
+    // Always restore visibility -- keepChanges only reflects whether the caller already wrote
+    // new content into quillContentEl (save) or left it untouched (discard); either way the
+    // editor session is ending and the underlying element must reappear.
+    if (quillContentEl) {
       quillContentEl.style.display = '';
     }
-    if (container && container.parentNode) container.parentNode.removeChild(container);
+    if (container) {
+      // Quill auto-creates its own .ql-toolbar as container's previous sibling when the
+      // toolbar module is configured as an array rather than a container element; it isn't
+      // inside container, so removing container alone leaves it orphaned in the page.
+      var toolbarEl = container.previousElementSibling;
+      if (toolbarEl && toolbarEl.classList.contains('ql-toolbar') && toolbarEl.parentNode) {
+        toolbarEl.parentNode.removeChild(toolbarEl);
+      }
+      if (container.parentNode) container.parentNode.removeChild(container);
+    }
     if (quillActionsBar && quillActionsBar.parentNode) quillActionsBar.parentNode.removeChild(quillActionsBar);
     if (quillHost) quillHost.classList.remove('sc-quill-editing');
     activeQuill = null;
@@ -516,16 +528,25 @@
 
   // Build the layout JSON from current DOM order.
   // Uses the data-editor-* original indices stored on each element.
+  //
+  // Column/widget lookups can't assume a fixed nesting depth under their section/column:
+  // layout-body-renderer.jspf only puts columns directly under the data-editor-section element
+  // for grid/platform-no-margin/admin sections -- a default (no cssClass) section on a normal
+  // page nests them two levels deeper (.full-container > .grid-container > .grid-x > column), so
+  // a ':scope >' query silently matched zero columns there and Save Layout persisted an empty
+  // section. closest() ties each candidate back to its true nearest ancestor instead.
   function buildLayoutJson() {
     var sections = [];
     document.querySelectorAll('[data-editor-section]').forEach(function (sectionEl) {
       var sIdx = parseInt(sectionEl.dataset.editorSection, 10);
       var columns = [];
-      sectionEl.querySelectorAll(':scope > [data-editor-column]').forEach(function (colEl) {
+      sectionEl.querySelectorAll('[data-editor-column]').forEach(function (colEl) {
+        if (colEl.closest('[data-editor-section]') !== sectionEl) return;
         var parts = colEl.dataset.editorColumn.split('-');
         var cIdx = parseInt(parts[1], 10);
         var widgets = [];
-        colEl.querySelectorAll(':scope > [data-editor-widget]').forEach(function (widgetEl) {
+        colEl.querySelectorAll('[data-editor-widget]').forEach(function (widgetEl) {
+          if (widgetEl.closest('[data-editor-column]') !== colEl) return;
           var wParts = widgetEl.dataset.editorWidget.split('-');
           widgets.push(parseInt(wParts[2], 10));
         });
@@ -624,6 +645,10 @@
   // Attach HTML5 drag events to a draggable element (section or widget)
   function makeDraggable(el, type) {
     el.addEventListener('dragstart', function (e) {
+      // dragstart bubbles: a widget's dragstart also reaches its enclosing section's
+      // listener. Ignore any dragstart that didn't originate on this exact element, or
+      // the bubbled event overwrites dragSrcEl/dragSrcType with the wrong element/type.
+      if (e.target !== el) return;
       dragSrcEl = el;
       dragSrcType = type;
       e.dataTransfer.effectAllowed = 'move';
@@ -643,6 +668,11 @@
     el.addEventListener('dragover', function (e) {
       if (!dragSrcEl || dragSrcType !== type) return;
       if (dragSrcEl === el) return;
+      // A widget's drop is persisted by indexing into its *original* column's widget list at its
+      // *original* own-column index (see SaveDraftLayoutCommand.saveDraftLayout) -- that is only
+      // valid for a same-column reorder. Reject cross-column drops here rather than accept a drop
+      // that would error or silently attach the wrong widget.
+      if (type === 'widget' && dragSrcEl.closest('[data-editor-column]') !== el.closest('[data-editor-column]')) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
 
@@ -669,6 +699,8 @@
 
     el.addEventListener('drop', function (e) {
       if (!dragSrcEl || dragSrcType !== type || dragSrcEl === el) return;
+      // Same-column-only guard, mirrored from dragover above.
+      if (type === 'widget' && dragSrcEl.closest('[data-editor-column]') !== el.closest('[data-editor-column]')) return;
       e.preventDefault();
       e.stopPropagation();
 

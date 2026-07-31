@@ -68,11 +68,13 @@
       }]
     },
     options: {
-      legend: {
-        display: false
+      plugins: {
+        legend: {
+          display: false
+        }
       },
       scales: {
-        yAxes: [{
+        y: {
           display: true,
           ticks: {
             suggestedMin: 0,
@@ -80,7 +82,7 @@
             // beginAtZero: true,
             precision:0
           }
-        }]
+        }
       }
     }
   });

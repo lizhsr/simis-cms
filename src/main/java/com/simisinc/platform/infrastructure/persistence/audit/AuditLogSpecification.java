@@ -21,7 +21,8 @@ import java.sql.Timestamp;
 /**
  * Filter criteria for querying the security audit log (see AuditLogRepository). Every field is optional;
  * an unset field (null, or -1 for the actor id) does not constrain the query. Used by the in-app audit
- * review UI to filter by category, event type, outcome, actor, source IP, and an occurred-date range.
+ * review UI to filter by category, event type, outcome, actor, source IP, target type, target label, and
+ * an occurred date range.
  *
  * @author SimIS Inc.
  */
@@ -33,6 +34,8 @@ public class AuditLogSpecification {
   private long actorUserId = -1L;
   private String actorUsername = null;   // partial, case-insensitive match
   private String sourceIp = null;
+  private String targetType = null;
+  private String targetLabel = null;   // exact match, e.g. an IP address or CIDR range
   private Timestamp occurredAfter = null;   // occurred >= this
   private Timestamp occurredBefore = null;  // occurred < this (use the start of the day after the "to" date)
 
@@ -82,6 +85,22 @@ public class AuditLogSpecification {
 
   public void setSourceIp(String sourceIp) {
     this.sourceIp = sourceIp;
+  }
+
+  public String getTargetType() {
+    return targetType;
+  }
+
+  public void setTargetType(String targetType) {
+    this.targetType = targetType;
+  }
+
+  public String getTargetLabel() {
+    return targetLabel;
+  }
+
+  public void setTargetLabel(String targetLabel) {
+    this.targetLabel = targetLabel;
   }
 
   public Timestamp getOccurredAfter() {

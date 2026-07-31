@@ -50,6 +50,11 @@ public class CalendarEventAjax extends GenericWidget {
     List<CalendarEvent> calendarEventList = null;
     CalendarEventSpecification specification = new CalendarEventSpecification();
     specification.setId(id);
+    boolean canSeeUnpublished = context.getUserSession() != null
+        && (context.getUserSession().hasRole("admin") || context.getUserSession().hasRole("content-manager"));
+    if (!canSeeUnpublished) {
+      specification.setPublishedOnly(true);
+    }
     calendarEventList = CalendarEventRepository.findAll(specification, null);
     if (calendarEventList == null || calendarEventList.isEmpty()) {
       context.setJson("[]");
@@ -74,6 +79,9 @@ public class CalendarEventAjax extends GenericWidget {
       if (calendarEvent.getAllDay()) {
         sb.append("\"allDay\":").append("true").append(",");
       }
+      if (calendarEvent.getPublished() != null) {
+        sb.append("\"published\":").append("true").append(",");
+      }
       String startDate = new SimpleDateFormat("yyyy-MM-dd").format(calendarEvent.getStartDate());
       String endDate = new SimpleDateFormat("yyyy-MM-dd").format(calendarEvent.getEndDate());
       String startDateHours = new SimpleDateFormat("HH:mm").format(calendarEvent.getStartDate());
@@ -86,6 +94,19 @@ public class CalendarEventAjax extends GenericWidget {
       }
       if (calendarEvent.getSignUpUrl() != null) {
         sb.append("\"signUpUrl\":\"").append(JsonCommand.toJson(calendarEvent.getSignUpUrl())).append("\",");
+      }
+      if (calendarEvent.getVideoUrl() != null) {
+        sb.append("\"videoUrl\":\"").append(JsonCommand.toJson(calendarEvent.getVideoUrl())).append("\",");
+      }
+      if (calendarEvent.getTagsList() != null && calendarEvent.getTagsList().length > 0) {
+        sb.append("\"tagsList\":[");
+        for (int i = 0; i < calendarEvent.getTagsList().length; i++) {
+          if (i > 0) {
+            sb.append(",");
+          }
+          sb.append("\"").append(JsonCommand.toJson(calendarEvent.getTagsList()[i])).append("\"");
+        }
+        sb.append("],");
       }
       if (StringUtils.isNotEmpty(calendarEvent.getSummary())) {
         sb.append("\"description\":\"").append(JsonCommand.toJson(calendarEvent.getSummary())).append("\",");

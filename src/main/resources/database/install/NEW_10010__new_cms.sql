@@ -225,6 +225,21 @@ CREATE INDEX form_data_claimed_by_idx ON form_data(claimed_by);
 CREATE INDEX form_data_dismissed_idx ON form_data(dismissed);
 CREATE INDEX form_data_processed_idx ON form_data(processed);
 
+-- Rejected form submissions (issue #563): deliberately lean, no field_values -- most of this volume is
+-- bot/spam noise (captcha failures, rate-limited requests) not worth persisting PII for. A rejection here
+-- never has a corresponding form_data row -- that table only ever contains successfully-saved submissions.
+CREATE TABLE form_submission_failures (
+  failure_id BIGSERIAL PRIMARY KEY,
+  form_unique_id VARCHAR(255),
+  occurred TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  reason VARCHAR(30) NOT NULL,
+  ip_address VARCHAR(200),
+  url VARCHAR(512)
+);
+CREATE INDEX form_sub_fail_form_idx ON form_submission_failures(form_unique_id);
+CREATE INDEX form_sub_fail_occurred_idx ON form_submission_failures(occurred);
+CREATE INDEX form_sub_fail_reason_idx ON form_submission_failures(reason);
+
 -- We want to know popular page_path
 -- We want to know popular web_page_id
 -- We want to know geolocation of ip_address
@@ -265,6 +280,34 @@ CREATE TABLE web_searches (
   session_id VARCHAR(255),
   is_logged_in BOOLEAN DEFAULT FALSE
 );
+
+-- Search analytics: zero-result queries and trending search terms (#424). Deliberately separate
+-- from web_searches above -- see search_analytics's own upgrade migration for why.
+CREATE TABLE search_analytics (
+  search_analytics_id BIGSERIAL PRIMARY KEY,
+  query VARCHAR(255) NOT NULL,
+  search_type VARCHAR(50) NOT NULL,
+  result_count INTEGER NOT NULL DEFAULT 0,
+  page_path VARCHAR(255),
+  created TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX search_analytics_created_idx ON search_analytics(created);
+CREATE INDEX search_analytics_query_idx ON search_analytics(query);
+
+-- System health check history: one row per (service, check run), populated by SystemHealthJob
+-- (issue #466). service_name is currently 'database' or 'filesystem' -- the two HealthCommand
+-- checks that can flip from healthy to unhealthy after startup; see system_health_checks's own
+-- upgrade migration for why 'startup' isn't tracked here.
+CREATE TABLE system_health_checks (
+  system_health_check_id BIGSERIAL PRIMARY KEY,
+  service_name VARCHAR(50) NOT NULL,
+  status VARCHAR(10) NOT NULL,
+  response_time_ms INTEGER,
+  error_message VARCHAR(500),
+  checked_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX system_health_checks_checked_at_idx ON system_health_checks(checked_at);
+CREATE INDEX system_health_checks_service_name_idx ON system_health_checks(service_name);
 
 --
 -- CREATE TABLE content_hits (
@@ -650,3 +693,40 @@ CREATE TABLE stylesheets (
   modified TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX stylesheets_web_idx ON stylesheets(web_page_id);
+
+-- Core Web Vitals RUM (Real User Monitoring, #429)
+-- Raw metrics collected from real page loads, one row per metric per page load
+CREATE TABLE web_vitals (
+  id BIGSERIAL PRIMARY KEY,
+  url VARCHAR(2048) NOT NULL,
+  metric_type VARCHAR(50) NOT NULL,  -- 'LCP', 'CLS', 'INP', 'FCP', 'TTFB'
+  value NUMERIC(10, 2) NOT NULL,     -- metric value (milliseconds for timing, unitless for CLS)
+  rating VARCHAR(20),                 -- 'good', 'needs-improvement', 'poor'
+  session_id VARCHAR(64),             -- visitor session (optional, for correlation)
+  web_page_id BIGINT REFERENCES web_pages(web_page_id) ON DELETE CASCADE,
+  user_agent_hash VARCHAR(64),
+  viewport_width SMALLINT,
+  connection_type VARCHAR(16),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  CONSTRAINT metric_type_check CHECK (metric_type IN ('LCP', 'CLS', 'INP', 'FCP', 'TTFB'))
+);
+CREATE INDEX idx_web_vitals_url_metric_created ON web_vitals(url, metric_type, created_at DESC);
+CREATE INDEX idx_web_vitals_created ON web_vitals(created_at DESC);
+CREATE INDEX idx_web_vitals_metric ON web_vitals(metric_type);
+CREATE INDEX idx_web_vitals_web_page_id ON web_vitals(web_page_id);
+
+-- Pre-computed p50/p75/p95 per URL per metric, refreshed nightly from raw web_vitals rows
+CREATE TABLE web_vitals_aggregates (
+  id BIGSERIAL PRIMARY KEY,
+  url VARCHAR(2048) NOT NULL,
+  metric_type VARCHAR(50) NOT NULL,
+  p50_value NUMERIC(10, 2),
+  p75_value NUMERIC(10, 2),
+  p95_value NUMERIC(10, 2),
+  sample_count INTEGER NOT NULL DEFAULT 0,
+  aggregated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  CONSTRAINT web_vitals_aggregates_metric_type_check CHECK (metric_type IN ('LCP', 'CLS', 'INP', 'FCP', 'TTFB')),
+  CONSTRAINT web_vitals_aggregates_url_metric_day_unique UNIQUE (url, metric_type, aggregated_at)
+);
+CREATE INDEX idx_web_vitals_aggregates_url_metric ON web_vitals_aggregates(url, metric_type);
+CREATE INDEX idx_web_vitals_aggregates_aggregated_at ON web_vitals_aggregates(aggregated_at DESC);

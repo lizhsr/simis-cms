@@ -24,8 +24,8 @@ import java.util.Set;
  *
  * Only exact property names belong here; do not add prefix rules -- '.key' is a secret for
  * some services and a public publishable key for others (for example the Stripe and Square
- * browser keys, the captcha site key, and the Mapbox access token are sent to the browser
- * by design and must not be masked).
+ * browser keys and the captcha site key are sent to the browser by design and must not be
+ * masked).
  *
  * @author elizabeth houser
  */
@@ -45,7 +45,9 @@ public class SecretSitePropertiesCommand {
       "captcha.google.secretkey",
       // Server-side integration keys and tokens
       "mailing-list.mailchimp.apiKey",
+      "mailing-list.zerobounce.apiKey",
       "bi.superset.secret",
+      "bi.metabase.secret",
       "social.instagram.accessToken",
       "elearning.lrs.key",
       "elearning.lrs.secret",

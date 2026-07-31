@@ -23,6 +23,7 @@ import com.simisinc.platform.domain.model.dashboard.StatisticsData;
 import com.simisinc.platform.infrastructure.cache.CacheManager;
 import com.simisinc.platform.infrastructure.database.*;
 import com.simisinc.platform.infrastructure.persistence.ecommerce.OrderRepository;
+import com.simisinc.platform.infrastructure.persistence.login.UnsuspendRequestRepository;
 import com.simisinc.platform.infrastructure.persistence.login.UserGroupRepository;
 import com.simisinc.platform.infrastructure.persistence.login.UserLoginRepository;
 import com.simisinc.platform.infrastructure.persistence.login.UserRoleRepository;
@@ -71,6 +72,20 @@ public class UserRepository {
         } else {
           where.add("validated IS NULL");
         }
+      }
+      if (specification.getIsLocked() != DataConstants.UNDEFINED) {
+        if (specification.getIsLocked() == DataConstants.TRUE) {
+          where.add("locked_until IS NOT NULL AND locked_until > NOW()");
+        } else {
+          where.add("(locked_until IS NULL OR locked_until <= NOW())");
+        }
+      }
+      if (specification.getIsMfaEnabled() != DataConstants.UNDEFINED) {
+        where.add("mfa_enabled = ?", specification.getIsMfaEnabled() == DataConstants.TRUE);
+      }
+      if (specification.getPasswordOlderThanDays() > -1) {
+        where.add("(last_password_changed_at IS NULL OR last_password_changed_at < NOW() - (? || ' days')::INTERVAL)",
+            specification.getPasswordOlderThanDays());
       }
       if (specification.getMatchesName() != null) {
         if (specification.getMatchesName().contains("@")) {
@@ -209,6 +224,10 @@ public class UserRepository {
     return records;
   }
 
+  public static long countLockedAccounts() {
+    return DB.selectCountFrom(TABLE_NAME, new SqlUtils().add("locked_until > ?", new Timestamp(System.currentTimeMillis())));
+  }
+
   public static long countTotalUsers() {
     long count = -1;
     String SQL_QUERY =
@@ -224,6 +243,75 @@ public class UserRepository {
       LOG.error("SQLException: " + se.getMessage());
     }
     return count;
+  }
+
+  /** Uses the existing enabled-filter query rather than a bespoke SQL string (selectAllFrom always runs a real COUNT(*), independent of page size -- see DB.selectAllFrom). */
+  public static long countEnabledAccounts() {
+    UserSpecification specification = new UserSpecification();
+    specification.setIsEnabled(true);
+    DataConstraints constraints = new DataConstraints();
+    constraints.setPageSize(1);
+    findAll(specification, constraints);
+    return constraints.getTotalRecordCount();
+  }
+
+  public static long countValidatedAccounts() {
+    UserSpecification specification = new UserSpecification();
+    specification.setIsVerified(true);
+    DataConstraints constraints = new DataConstraints();
+    constraints.setPageSize(1);
+    findAll(specification, constraints);
+    return constraints.getTotalRecordCount();
+  }
+
+  public static long countNewRegistrationsThisMonth() {
+    long count = -1;
+    String SQL_QUERY =
+        "SELECT COUNT(user_id) AS user_count " +
+            "FROM users " +
+            "WHERE DATE_TRUNC('month', created) = DATE_TRUNC('month', NOW())";
+    try (Connection connection = DB.getConnection();
+         PreparedStatement pst = connection.prepareStatement(SQL_QUERY);
+         ResultSet rs = pst.executeQuery()) {
+      if (rs.next()) {
+        count = rs.getLong("user_count");
+      }
+    } catch (SQLException se) {
+      LOG.error("SQLException: " + se.getMessage());
+    }
+    return count;
+  }
+
+  /**
+   * Counts users holding at least one row in user_roles (admin/staff -- there is no "public" role
+   * row to compare against; every privileged account has a role assignment, every public account
+   * has none). DISTINCT so a user holding more than one role is not double-counted.
+   */
+  public static long countAccountsWithAnyRole() {
+    long count = -1;
+    String SQL_QUERY =
+        "SELECT COUNT(DISTINCT user_id) AS user_count " +
+            "FROM user_roles";
+    try (Connection connection = DB.getConnection();
+         PreparedStatement pst = connection.prepareStatement(SQL_QUERY);
+         ResultSet rs = pst.executeQuery()) {
+      if (rs.next()) {
+        count = rs.getLong("user_count");
+      }
+    } catch (SQLException se) {
+      LOG.error("SQLException: " + se.getMessage());
+    }
+    return count;
+  }
+
+  /** Public accounts = everyone minus everyone with a role assignment (see countAccountsWithAnyRole). */
+  public static long countPublicAccounts() {
+    long total = countTotalUsers();
+    long withRole = countAccountsWithAnyRole();
+    if (total < 0 || withRole < 0) {
+      return -1;
+    }
+    return total - withRole;
   }
 
   public static User save(User record) {
@@ -367,6 +455,7 @@ public class UserRepository {
     SqlUtils updateValues = new SqlUtils()
         .add("password", record.getPassword())
         .add("account_token", (String) null)
+        .add("last_password_changed_at", new Timestamp(System.currentTimeMillis()))
         .add("modified", new Timestamp(System.currentTimeMillis()));
     SqlUtils where = new SqlUtils()
         .add("user_id = ?", record.getId());
@@ -409,6 +498,24 @@ public class UserRepository {
     updateLockoutState(userId, 0, null);
   }
 
+  private static final int DEFAULT_PASSWORD_MAX_AGE_DAYS = 90;
+
+  /**
+   * Parses the configurable password.maxAgeDays site property, falling back to the default on a
+   * blank or unparseable value -- mirrors AuditLogRepository.resolveRetentionDays's shape (#492).
+   */
+  public static int resolvePasswordMaxAgeDays(String value) {
+    if (StringUtils.isBlank(value)) {
+      return DEFAULT_PASSWORD_MAX_AGE_DAYS;
+    }
+    try {
+      int days = Integer.parseInt(value.trim());
+      return days > 0 ? days : DEFAULT_PASSWORD_MAX_AGE_DAYS;
+    } catch (NumberFormatException e) {
+      return DEFAULT_PASSWORD_MAX_AGE_DAYS;
+    }
+  }
+
   public static User createAccountToken(User record) {
     String newToken = UUID.randomUUID().toString();
     Timestamp expires = new Timestamp(System.currentTimeMillis() + 86_400_000L); // 24 hours
@@ -427,13 +534,17 @@ public class UserRepository {
     return null;
   }
 
-  public static User suspendAccount(User record) {
+  public static User suspendAccount(User record, String reason) {
     SqlUtils updateValues = new SqlUtils()
         .add("enabled", false)
+        .add("suspension_reason", reason, 255)
         .add("modified", new Timestamp(System.currentTimeMillis()));
     SqlUtils where = new SqlUtils()
         .add("user_id = ?", record.getId());
     if (DB.update(TABLE_NAME, updateValues, where)) {
+      // A fresh suspension moots any in-flight unsuspend-approval request/decision for this
+      // account (issue #492 Phase 3) -- a later unsuspend starts a brand-new governance cycle.
+      UnsuspendRequestRepository.supersedePendingForTarget(record.getId(), "Account was suspended again");
       return record;
     }
     LOG.error("suspendAccount failed!");
@@ -443,6 +554,7 @@ public class UserRepository {
   public static User restoreAccount(User record) {
     SqlUtils updateValues = new SqlUtils()
         .add("enabled", true)
+        .add("suspension_reason", (String) null)
         .add("modified", new Timestamp(System.currentTimeMillis()));
     SqlUtils where = new SqlUtils()
         .add("user_id = ?", record.getId());
@@ -561,6 +673,8 @@ public class UserRepository {
       record.setMfaEnabled(rs.getBoolean("mfa_enabled"));
       record.setFailedAttemptCount(rs.getInt("failed_attempt_count"));
       record.setLockedUntil(rs.getTimestamp("locked_until"));
+      record.setLastPasswordChangedAt(rs.getTimestamp("last_password_changed_at"));
+      record.setSuspensionReason(rs.getString("suspension_reason"));
       return record;
     } catch (SQLException se) {
       LOG.error("buildRecord", se);

@@ -42,6 +42,8 @@ INSERT INTO site_properties (property_order, property_label, property_name, prop
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (24, 'Allow registrations?', 'site.registrations', 'false', 'boolean');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (26, 'Show login?', 'site.login', 'false', 'boolean');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (27, 'Require review approval before publishing content', 'content.review.required', 'false', 'boolean');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (28, 'Roles that must enrol in MFA (comma-separated)', 'mfa.required.roles', '', 'text');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (29, 'MFA enrollment URL', 'mfa.enrollment.url', '/my-profile', 'web-page');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (30, 'Header line 1', 'site.header.line1', '');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (31, 'Header link name', 'site.header.link', '');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (32, 'Header details page', 'site.header.page', '', 'web-page');
@@ -140,13 +142,13 @@ INSERT INTO site_properties (property_label, property_name, property_value, prop
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (10, 'Mailing List Service', 'mailing-list.service', 'None', 'text');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (20, 'MailChimp API Key', 'mailing-list.mailchimp.apiKey', '', 'text');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (22, 'MailChimp List Id', 'mailing-list.mailchimp.listId', '', 'text');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (24, 'ZeroBounce API Key', 'mailing-list.zerobounce.apiKey', '', 'text');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (26, 'Mailing List Quarantine Alert Threshold (%)', 'mailing-list.quarantine.alertThresholdPercent', '10', 'text');
 
 -- Maps
 
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (10, 'Map Tiles Service', 'maps.service.tiles', 'openstreetmap');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (20, 'Map Geocoder Service', 'maps.service.geocoder', 'nominatim');
--- UPDATE site_properties SET property_value = 'mapbox' WHERE property_name = 'maps.service.tiles';
-INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (30, 'Map Box Access Token', 'maps.mapbox.accesstoken', '');
 -- UPDATE site_properties SET property_value = 'custom' WHERE property_name = 'maps.service.tiles';
 -- No property_type: the url validator rejects the required {z}/{x}/{y} placeholders; FindMapTilesCredentialsCommand validates instead
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (40, 'Custom Map Tiles Url ({z}/{x}/{y} template)', 'maps.custom.tileserver.url', '');
@@ -159,6 +161,8 @@ INSERT INTO site_properties (property_order, property_label, property_name, prop
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (6, 'Anonymize analytics IP addresses?', 'analytics.anonymizeIp', 'false', 'boolean');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (8, 'Analytics data retention (days)', 'analytics.retentionDays', '365');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (1, 'Audit log retention (days)', 'audit.retentionDays', '2555');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (2, 'Password Age Warning Threshold (days)', 'password.maxAgeDays', '90', 'text');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (11, 'Form submission failure retention (days)', 'formData.failureRetentionDays', '90');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (10, 'Analytics Service', 'analytics.service', 'google');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (7, 'Honor Do-Not-Track / Global Privacy Control?', 'analytics.honorDnt', 'false', 'boolean');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (9, 'Require visitor consent before loading analytics?', 'analytics.consentRequired', 'false', 'boolean');
@@ -176,18 +180,16 @@ INSERT INTO site_properties (property_order, property_label, property_name, prop
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (30, 'Google reCAPTCHA Secret Key', 'captcha.google.secretkey', '');
 
 -- Social Media
+-- issue #516: platform link fields (Facebook/Instagram/LinkedIn/Twitter/Flickr/YouTube) moved to the
+-- dynamic social_media_links table below -- an admin-editable list of (platform, url) pairs instead of
+-- a fixed set of hardcoded properties. Contact info and the Instagram feed-embed integration stay here,
+-- since they aren't platform links.
 
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (5, 'Email Address', 'social.email', '');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (10, 'Telephone', 'social.phone', '');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value) VALUES (15, 'Email Subscribe Link', 'social.subscribe.url', '');
-INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (20, 'Facebook', 'social.facebook.url', '', 'url');
-INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (25, 'Instagram', 'social.instagram.url', '', 'url');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (27, 'Instagram Access Token', 'social.instagram.accessToken', '', 'text');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (28, 'Instagram Facebook Page Value', 'social.instagram.facebookPageValue', '', 'text');
-INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (30, 'LinkedIn', 'social.linkedin.url', '', 'url');
-INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (35, 'Twitter', 'social.twitter.url', '', 'url');
-INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (40, 'Flickr', 'social.flickr.url', '', 'url');
-INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (45, 'Youtube', 'social.youtube.url', '', 'url');
 
 -- BI
 
@@ -195,6 +197,9 @@ INSERT INTO site_properties (property_order, property_label, property_name, prop
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (10, 'Superset Url', 'bi.superset.url', '', 'url');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (12, 'Superset Id', 'bi.superset.id', '', 'text');
 INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (14, 'Superset Secret', 'bi.superset.secret', '', 'text');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (16, 'Enable Metabase?', 'bi.metabase.enabled', 'true', 'boolean');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (18, 'Metabase Url', 'bi.metabase.url', '', 'url');
+INSERT INTO site_properties (property_order, property_label, property_name, property_value, property_type) VALUES (20, 'Metabase Secret', 'bi.metabase.secret', '', 'text');
 
 -- E-Commerce
 
@@ -284,6 +289,75 @@ INSERT INTO lookup_role (level, code, title) VALUES (93, 'data-manager', 'Data M
 INSERT INTO lookup_role (level, code, title) VALUES (95, 'ecommerce-manager', 'E-commerce Manager');
 INSERT INTO lookup_role (level, code, title) VALUES (100, 'admin', 'System Administrator');
 
+CREATE TABLE capabilities (
+  capability_id BIGSERIAL PRIMARY KEY,
+  code VARCHAR(100) UNIQUE NOT NULL,
+  category VARCHAR(50),
+  description VARCHAR(500),
+  created TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE role_capabilities (
+  role_id INTEGER NOT NULL REFERENCES lookup_role (role_id),
+  capability_id BIGINT NOT NULL REFERENCES capabilities (capability_id),
+  PRIMARY KEY (role_id, capability_id)
+);
+
+CREATE INDEX idx_role_capabilities_capability_id ON role_capabilities (capability_id);
+
+-- Seeded mechanically from the existing hasRole()/hasRole()-OR-chain survey (issue #701) --
+-- one capability per (module, verb) actually observed, mapped onto the role(s) that already --
+-- pass that check today. This is a read model over the status quo, not a policy change: no --
+-- role gains or loses access to anything as a result of this migration.
+--
+-- Note: 'content-editor' is not referenced by any hasRole() call site yet, so there is no
+-- observed behavior to derive a capability set from. Seeding it here would invent access it
+-- doesn't currently grant.
+
+INSERT INTO capabilities (code, category, description) VALUES
+  ('content:manage', 'content', 'Create, edit, and publish web pages, blog posts, and wiki content'),
+  ('community:manage', 'community', 'Manage mailing lists, users, and community/forum content'),
+  ('data:manage', 'data', 'Manage structured data items and collections'),
+  ('ecommerce:manage', 'ecommerce', 'Manage products and orders'),
+  ('admin:manage', 'admin', 'Full administrative access to all site settings and configuration');
+
+-- admin: the existing "admin OR X" pattern found at every one of the 191 hasRole() call sites
+-- means admin implicitly has every capability - expressed here as explicit rows so the table
+-- stays a complete, queryable matrix (nothing is implied at query time).
+INSERT INTO role_capabilities (role_id, capability_id)
+SELECT lr.role_id, c.capability_id
+FROM lookup_role lr, capabilities c
+WHERE lr.code = 'admin';
+
+INSERT INTO role_capabilities (role_id, capability_id)
+SELECT lr.role_id, c.capability_id
+FROM lookup_role lr, capabilities c
+WHERE lr.code = 'content-manager' AND c.code = 'content:manage';
+
+INSERT INTO role_capabilities (role_id, capability_id)
+SELECT lr.role_id, c.capability_id
+FROM lookup_role lr, capabilities c
+WHERE lr.code = 'community-manager' AND c.code = 'community:manage';
+
+INSERT INTO role_capabilities (role_id, capability_id)
+SELECT lr.role_id, c.capability_id
+FROM lookup_role lr, capabilities c
+WHERE lr.code = 'data-manager' AND c.code = 'data:manage';
+
+INSERT INTO role_capabilities (role_id, capability_id)
+SELECT lr.role_id, c.capability_id
+FROM lookup_role lr, capabilities c
+WHERE lr.code = 'ecommerce-manager' AND c.code = 'ecommerce:manage';
+
+-- The wiki widget's 3-way admin/content-manager/community-manager OR-check (issue #701 survey)
+-- means content-manager and community-manager both also need content:manage's wiki slice.
+-- Kept coarse (whole content:manage) rather than splitting out a wiki-only capability in this
+-- walking-skeleton PR - narrowing that is future work once a widget actually needs it.
+INSERT INTO role_capabilities (role_id, capability_id)
+SELECT lr.role_id, c.capability_id
+FROM lookup_role lr, capabilities c
+WHERE lr.code = 'community-manager' AND c.code = 'content:manage';
+
 CREATE TABLE users (
   user_id BIGSERIAL PRIMARY KEY,
   unique_id VARCHAR(255) UNIQUE NOT NULL,
@@ -300,6 +374,7 @@ CREATE TABLE users (
   modified TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
   modified_by BIGINT REFERENCES users(user_id),
   account_token VARCHAR(255),
+  account_token_expires TIMESTAMP(3),
   validated TIMESTAMP(3),
   title VARCHAR(100),
   department VARCHAR(100),
@@ -319,7 +394,9 @@ CREATE TABLE users (
   mfa_secret VARCHAR(64),
   mfa_enabled BOOLEAN DEFAULT false,
   failed_attempt_count INTEGER DEFAULT 0,
-  locked_until TIMESTAMP(3)
+  locked_until TIMESTAMP(3),
+  last_password_changed_at TIMESTAMP(3),
+  suspension_reason VARCHAR(255)
 );
 CREATE UNIQUE INDEX users_lc_email ON users (LOWER(email));
 CREATE UNIQUE INDEX users_lc_username ON users (LOWER(username));
@@ -336,6 +413,33 @@ CREATE TABLE user_roles (
 );
 CREATE INDEX user_roles_rol_idx ON user_roles(role_id);
 CREATE INDEX user_roles_usr_idx ON user_roles(user_id);
+
+-- Direct, individually-trackable capability grants (issue #702) - independent of role_capabilities.
+-- A user can hold a capability two ways: through a role (role_capabilities, #701) or through a
+-- direct grant here (e.g. a temporary contractor who shouldn't get a whole role). expires_at is
+-- nullable - null means permanent, matching a direct grant with no time limit.
+CREATE TABLE capability_grants (
+  capability_grant_id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users (user_id),
+  capability_id BIGINT NOT NULL REFERENCES capabilities (capability_id),
+  granted_by BIGINT REFERENCES users (user_id),
+  granted TIMESTAMP DEFAULT NOW(),
+  reason VARCHAR(500),
+  expires_at TIMESTAMP,
+  revoked_at TIMESTAMP,
+  expiration_notified_at TIMESTAMP
+);
+
+CREATE INDEX idx_capability_grants_user_id ON capability_grants (user_id);
+CREATE INDEX idx_capability_grants_capability_id ON capability_grants (capability_id);
+
+-- Only one *active* grant of a given capability per user at a time - prevents silently stacking
+-- duplicate grants; revoke (or let expire) the existing one before granting again.
+CREATE UNIQUE INDEX idx_capability_grants_active_unique ON capability_grants (user_id, capability_id)
+  WHERE revoked_at IS NULL;
+
+-- Sweep queries (CapabilityGrantExpirationJob) filter on both columns together.
+CREATE INDEX idx_capability_grants_expires_at ON capability_grants (expires_at) WHERE revoked_at IS NULL;
 
 
 CREATE TABLE groups (
@@ -383,7 +487,9 @@ CREATE TABLE sessions (
   id BIGSERIAL PRIMARY KEY,
   session_id VARCHAR(255),
   created TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
-  ip_address VARCHAR(200) NOT NULL,
+  -- Nullable: the daily PII-scrub job (SessionsPiiScrubJob, GH-365) nulls this out for rows past
+  -- the analytics retention window. See UPGRADE_20260727.1000 for the existing-install side of this.
+  ip_address VARCHAR(200),
   user_agent VARCHAR(255),
   referer VARCHAR(255),
   continent VARCHAR(20),
@@ -400,13 +506,17 @@ CREATE TABLE sessions (
   source VARCHAR(50),
   app_id BIGINT REFERENCES apps(app_id),
   visitor_id BIGINT REFERENCES visitors(visitor_id),
-  is_bot BOOLEAN DEFAULT false
+  is_bot BOOLEAN DEFAULT false,
+  is_anonymous BOOLEAN NOT NULL DEFAULT false
 );
+
+COMMENT ON COLUMN sessions.is_anonymous IS 'True if session is from anonymous visitor (no user login)';
 
 CREATE INDEX sessions_created_idx ON sessions(created);
 CREATE INDEX sessions_sess_id_idx ON sessions(session_id);
 CREATE INDEX sessions_is_bot_idx ON sessions(is_bot);
 CREATE INDEX sessions_referer_idx ON sessions(referer);
+CREATE INDEX idx_sessions_is_anonymous_created ON sessions(is_anonymous, created DESC);
 
 -- CREATE TABLE session_country_snapshots (
 --   snapshot_id BIGSERIAL PRIMARY KEY,
@@ -466,6 +576,43 @@ CREATE TABLE audit_log (
 CREATE INDEX audit_log_occurred_idx ON audit_log(occurred);
 CREATE INDEX audit_log_category_type_idx ON audit_log(event_category, event_type);
 CREATE INDEX audit_log_actor_idx ON audit_log(actor_user_id);
+CREATE INDEX audit_log_target_idx ON audit_log(target_type, target_label);
+
+-- Audit log prefix-deletion watermark (#296, AU-9; mirrored by UPGRADE_20260725.1002 for existing
+-- installs). Left empty on a fresh install -- there is no audit history yet to backfill from, and
+-- the application sets row id=1 atomically on the very first hashed insert (see
+-- AuditLogRepository.add()). Pre-seeding a placeholder row here would permanently block that
+-- INSERT ... ON CONFLICT DO NOTHING from ever recording the real value. See
+-- AuditLogIntegrityCommand for how the watermark is used to detect oldest-prefix deletion.
+CREATE TABLE audit_log_watermark (
+  id                     INTEGER PRIMARY KEY DEFAULT 1,
+  lowest_hashed_audit_id BIGINT  NOT NULL DEFAULT 0
+);
+
+-- Issue #492 Phase 3: maker-checker approval for unsuspending elevated-role accounts (mirrored by
+-- UPGRADE_20260730.1001 for existing installs). No foreign key on target_user_id/requested_by/
+-- decided_by, matching audit_log's own precedent above -- a request row is a governance/audit
+-- record and must survive the deletion of any user it references, not block it. The partial
+-- unique index enforces "at most one pending request per target" at the database level.
+CREATE TABLE unsuspend_requests (
+  request_id BIGSERIAL PRIMARY KEY,
+  target_user_id BIGINT NOT NULL,
+  target_email VARCHAR(255),
+  target_role_snapshot VARCHAR(255),
+  requested_by BIGINT NOT NULL,
+  requested_by_email VARCHAR(255),
+  reason VARCHAR(255) NOT NULL,
+  requested_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  status VARCHAR(20) DEFAULT 'pending' NOT NULL,
+  decided_by BIGINT,
+  decided_by_email VARCHAR(255),
+  decided_at TIMESTAMP(3),
+  decision_reason VARCHAR(255)
+);
+CREATE INDEX unsuspend_requests_target_idx ON unsuspend_requests(target_user_id);
+CREATE INDEX unsuspend_requests_status_idx ON unsuspend_requests(status, requested_at);
+CREATE UNIQUE INDEX ux_unsuspend_requests_one_pending_per_target
+  ON unsuspend_requests(target_user_id) WHERE status = 'pending';
 
 -- Multi-factor authentication recovery codes: one-time backup codes, stored as SHA-256 hashes
 CREATE TABLE user_mfa_recovery_codes (
@@ -502,6 +649,16 @@ CREATE TABLE block_list (
   created TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
   reason VARCHAR(255)
 );
+
+-- issue #516: an admin-editable list of (platform, url) pairs -- any platform name, not a fixed set
+CREATE TABLE social_media_links (
+  social_media_link_id BIGSERIAL PRIMARY KEY,
+  platform_name VARCHAR(100) NOT NULL,
+  url VARCHAR(512) NOT NULL,
+  link_order INTEGER DEFAULT 100,
+  created TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX social_media_links_order_idx ON social_media_links(link_order);
 
 CREATE TABLE world_cities (
   country VARCHAR(2),

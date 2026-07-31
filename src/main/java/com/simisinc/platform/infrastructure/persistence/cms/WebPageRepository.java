@@ -63,6 +63,20 @@ public class WebPageRepository {
     return DB.selectAllFrom(TABLE_NAME, where, constraints, WebPageRepository::buildRecord);
   }
 
+  public static long countScheduledNotYetLive() {
+    SqlUtils where = new SqlUtils()
+        .add("publish_at IS NOT NULL")
+        .add("publish_at > ?", new Timestamp(System.currentTimeMillis()));
+    return DB.selectCountFrom(TABLE_NAME, where);
+  }
+
+  public static long countExpiringSoon() {
+    SqlUtils where = new SqlUtils()
+        .add("expires_at IS NOT NULL")
+        .add("expires_at > ?", new Timestamp(System.currentTimeMillis()));
+    return DB.selectCountFrom(TABLE_NAME, where);
+  }
+
   public static WebPage findById(long id) {
     if (id == -1) {
       return null;
@@ -235,8 +249,8 @@ public class WebPageRepository {
     SqlUtils where = new SqlUtils()
         .add("enabled = true")
         .add("searchable = true")
-        .add("tsv @@ PLAINTO_TSQUERY('page_stem', ?)", searchTerm.trim());
-    select.add("TS_RANK_CD(tsv, PLAINTO_TSQUERY('page_stem', ?)) AS rank", searchTerm.trim());
+        .add("tsv @@ PLAINTO_TSQUERY('title_stem', ?)", searchTerm.trim());
+    select.add("TS_RANK_CD(tsv, PLAINTO_TSQUERY('title_stem', ?)) AS rank", searchTerm.trim());
     SqlUtils orderBy = new SqlUtils().add("rank DESC, link");
     DataResult result = DB.selectAllFrom(TABLE_NAME, select, where, orderBy, constraints, WebPageRepository::buildRecord);
     return result.hasRecords() ? (List<WebPage>) result.getRecords() : new java.util.ArrayList<>();

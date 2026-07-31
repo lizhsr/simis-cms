@@ -41,7 +41,10 @@ CREATE TABLE emails (
   number_of_orders INTEGER DEFAULT 0,
   total_spent NUMERIC(15,6) DEFAULT 0,
   tags JSONB,
-  sync_date TIMESTAMP(3)
+  sync_date TIMESTAMP(3),
+  validation_status VARCHAR(20),
+  validation_sub_status VARCHAR(50),
+  validated_at TIMESTAMP(3)
 );
 
 CREATE INDEX emails_created_idx ON emails(created);
@@ -52,6 +55,7 @@ CREATE INDEX emails_last_ord_idx ON emails(last_order);
 CREATE INDEX emails_num_ord_idx ON emails(number_of_orders);
 CREATE INDEX emails_total_sp_idx ON emails(total_spent);
 CREATE INDEX emails_sync_date_idx ON emails(sync_date);
+CREATE INDEX emails_validation_status_idx ON emails(validation_status);
 
 CREATE TABLE mailing_lists (
   list_id BIGSERIAL PRIMARY KEY,
@@ -86,12 +90,17 @@ CREATE TABLE mailing_list_members (
   unsubscribed TIMESTAMP(3),
   unsubscribed_by BIGINT REFERENCES users(user_id),
   unsubscribe_reason VARCHAR(100),
-  is_valid BOOLEAN DEFAULT true
+  is_valid BOOLEAN DEFAULT true,
+  quarantined TIMESTAMP(3),
+  quarantine_reason VARCHAR(50),
+  unsubscribe_token VARCHAR(255)
 );
 CREATE UNIQUE INDEX mail_lis_mem_uniq_idx ON mailing_list_members(list_id, email_id);
 CREATE INDEX mail_lis_mem_lid_idx ON mailing_list_members(list_id);
 CREATE INDEX mail_lis_mem_eid_idx ON mailing_list_members(email_id);
+CREATE INDEX mail_lis_mem_quarantined_idx ON mailing_list_members(quarantined);
 CREATE INDEX mail_lis_mem_val_idx ON mailing_list_members(is_valid);
+CREATE UNIQUE INDEX mail_lis_mem_unsub_tok_idx ON mailing_list_members(unsubscribe_token);
 
 CREATE TABLE mailing_list_history (
   history_id BIGSERIAL PRIMARY KEY,
@@ -99,20 +108,38 @@ CREATE TABLE mailing_list_history (
   created TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
   created_by BIGINT REFERENCES users(user_id),
   service VARCHAR(20),
-  email_count INTEGER DEFAULT 0
+  email_count INTEGER DEFAULT 0,
+  subject VARCHAR(255),
+  blog_post_id BIGINT REFERENCES blog_posts(post_id),
+  mailchimp_campaign_id VARCHAR(50)
 );
 CREATE INDEX mail_lis_his_lid_idx ON mailing_list_history(list_id);
 CREATE INDEX mail_lis_his_cre_idx ON mailing_list_history(created);
 
+-- item_id/status: one row per recipient of a batch (mailing_list_history), tracked from queued
+-- through sent or failed -- see UPGRADE_20260729.1004__newsletter_send_queue.sql for why.
 CREATE TABLE mailing_list_sent (
   item_id BIGSERIAL PRIMARY KEY,
   email_id BIGINT REFERENCES emails(email_id),
   list_id BIGINT REFERENCES mailing_lists(list_id),
   history_id BIGINT REFERENCES mailing_list_history(history_id),
-  created TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+  created TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
+  status VARCHAR(20) DEFAULT 'queued',
+  attempt_count INTEGER DEFAULT 0,
+  error_message VARCHAR(500),
+  claimed_at TIMESTAMP(3),
+  modified TIMESTAMP(3)
 );
 CREATE INDEX mail_list_sent_em_idx ON mailing_list_sent(email_id);
 CREATE INDEX mail_list_sent_li_idx ON mailing_list_sent(list_id);
 CREATE INDEX mail_list_sent_hi_idx ON mailing_list_sent(history_id);
 CREATE INDEX mail_list_sent_cr_idx ON mailing_list_sent(created);
+CREATE INDEX mail_list_sent_status_idx ON mailing_list_sent(status);
+
+-- Optional blog-to-mailing-list association (issue #599), added here (not in NEW_10010__new_cms.sql,
+-- which creates blogs) because mailing_lists doesn't exist yet at that point in a fresh install.
+-- ON DELETE SET NULL: deleting a mailing list must not be blocked by, or cascade into deleting, an
+-- unrelated blog that happens to be associated with it.
+ALTER TABLE blogs ADD COLUMN mailing_list_id BIGINT REFERENCES mailing_lists(list_id) ON DELETE SET NULL;
+CREATE INDEX blogs_mailing_list_idx ON blogs(mailing_list_id);
 

@@ -19,6 +19,7 @@ package com.simisinc.platform.presentation.widgets.cms;
 import com.simisinc.platform.application.admin.LoadSitePropertyCommand;
 import com.simisinc.platform.application.cms.HtmlCommand;
 import com.simisinc.platform.application.cms.LoadMenuTabsCommand;
+import com.simisinc.platform.application.cms.SearchAnalyticsCommand;
 import com.simisinc.platform.application.cms.WebPageXmlLayoutCommand;
 import com.simisinc.platform.domain.model.cms.*;
 import com.simisinc.platform.infrastructure.database.DataConstraints;
@@ -72,6 +73,7 @@ public class WebPageSearchResultsWidget extends GenericWidget {
     ContentSpecification contentSpecification = new ContentSpecification();
     contentSpecification.setSearchTerm(query);
     List<Content> contentList = ContentRepository.findAll(contentSpecification, constraints);
+    SearchAnalyticsCommand.record(context, query, "content", contentList == null ? 0 : contentList.size());
 
     // Prepare the response
     Map<String, SearchResult> resultsMap = new LinkedHashMap<>();
@@ -83,7 +85,7 @@ public class WebPageSearchResultsWidget extends GenericWidget {
     // Determine the web pages that can be searched
     UserSession userSession = context.getUserSession();
     WebPageSpecification webPageSpecification = new WebPageSpecification();
-    if (!context.hasRole("admin") || context.hasRole("content-manager")) {
+    if (shouldRestrictToPublishedSearchableWebPages(context)) {
       webPageSpecification.setSearchable(true);
       webPageSpecification.setDraft(false);
     }
@@ -162,6 +164,11 @@ public class WebPageSearchResultsWidget extends GenericWidget {
     }
     context.getRequest().setAttribute("searchResultList", resultsMap.values());
     return finishRequest(context, resultsMap);
+  }
+
+  // Mirrors isPageInTheNavigation's privileged bypass below.
+  static boolean shouldRestrictToPublishedSearchableWebPages(WidgetContext context) {
+    return !context.hasRole("admin") && !context.hasRole("content-manager");
   }
 
   private boolean isPageInTheNavigation(WidgetContext context, String link, List<MenuTab> menuTabList, List<TableOfContents> tableOfContentsList) {

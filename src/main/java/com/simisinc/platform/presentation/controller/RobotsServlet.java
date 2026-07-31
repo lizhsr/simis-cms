@@ -22,17 +22,14 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import jakarta.servlet.ServletException;
-import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Map;
 
-@WebServlet(name = "RobotsServlet", urlPatterns = {"/robots.txt"})
 public class RobotsServlet extends HttpServlet {
 
   private static final Log LOG = LogFactory.getLog(RobotsServlet.class);
@@ -46,7 +43,7 @@ public class RobotsServlet extends HttpServlet {
     try {
       String robotsContent = loadRobotsTxt();
       if (StringUtils.isBlank(robotsContent)) {
-        robotsContent = generateDefaultRobotsTxt(request);
+        robotsContent = generateDefaultRobotsTxt();
       }
 
       response.setStatus(HttpServletResponse.SC_OK);
@@ -76,11 +73,11 @@ public class RobotsServlet extends HttpServlet {
     return null;
   }
 
-  private String generateDefaultRobotsTxt(HttpServletRequest request) {
+  private String generateDefaultRobotsTxt() {
     StringBuilder sb = new StringBuilder();
 
-    Map<String, String> sitePropertyMap = LoadSitePropertyCommand.loadAsMap("site");
-    String siteUrl = sitePropertyMap.get("site.url");
+    String siteUrl = LoadSitePropertyCommand.loadByName("site.url");
+    Map<String, String> robotsPropertyMap = LoadSitePropertyCommand.loadAsMap("robots");
 
     // Default rules for all crawlers
     sb.append("User-Agent: *\n");
@@ -89,12 +86,21 @@ public class RobotsServlet extends HttpServlet {
     sb.append("Disallow: /action/\n");
     sb.append("Disallow: /admin\n");
 
-    // AI training crawler opt-outs (configurable via site properties)
-    addAiCrawlerRules(sb, sitePropertyMap, "gptbot", "GPTBot");
-    addAiCrawlerRules(sb, sitePropertyMap, "claudebot", "ClaudeBot");
-    addAiCrawlerRules(sb, sitePropertyMap, "google-extended", "Google-Extended");
-    addAiCrawlerRules(sb, sitePropertyMap, "perplexitybot", "PerplexityBot");
-    addAiCrawlerRules(sb, sitePropertyMap, "ccbot", "CCBot");
+    // AI crawler opt-outs (configurable via site properties). Each vendor runs separate,
+    // independently-controllable crawlers for training versus real-time citation/retrieval --
+    // disallowing the training bot has no effect on the citation bot, so each gets its own rule.
+    // Google has no separate citation crawler here: AI Overviews/AI Mode ride on standard Search
+    // indexing (Googlebot) per Google's own docs, so Google-Extended (training) stands alone.
+    addAiCrawlerRules(sb, robotsPropertyMap, "gptbot", "GPTBot");
+    addAiCrawlerRules(sb, robotsPropertyMap, "oai-searchbot", "OAI-SearchBot");
+    addAiCrawlerRules(sb, robotsPropertyMap, "chatgpt-user", "ChatGPT-User");
+    addAiCrawlerRules(sb, robotsPropertyMap, "claudebot", "ClaudeBot");
+    addAiCrawlerRules(sb, robotsPropertyMap, "claude-searchbot", "Claude-SearchBot");
+    addAiCrawlerRules(sb, robotsPropertyMap, "claude-user", "Claude-User");
+    addAiCrawlerRules(sb, robotsPropertyMap, "google-extended", "Google-Extended");
+    addAiCrawlerRules(sb, robotsPropertyMap, "perplexitybot", "PerplexityBot");
+    addAiCrawlerRules(sb, robotsPropertyMap, "perplexity-user", "Perplexity-User");
+    addAiCrawlerRules(sb, robotsPropertyMap, "ccbot", "CCBot");
 
     sb.append("\n");
 

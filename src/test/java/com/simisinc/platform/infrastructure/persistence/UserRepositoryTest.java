@@ -16,6 +16,7 @@
 
 package com.simisinc.platform.infrastructure.persistence;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -23,12 +24,14 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 
 import com.simisinc.platform.domain.model.User;
 import com.simisinc.platform.infrastructure.cache.CacheManager;
 import com.simisinc.platform.infrastructure.database.DB;
 import com.simisinc.platform.infrastructure.database.SqlUtils;
+import com.simisinc.platform.infrastructure.persistence.login.UnsuspendRequestRepository;
 import com.simisinc.platform.infrastructure.persistence.login.UserTokenRepository;
 
 /**
@@ -78,5 +81,60 @@ class UserRepositoryTest {
       cacheManager.verify(() -> CacheManager.invalidateKey(anyString(), any()), never());
       tokens.verify(() -> UserTokenRepository.removeAll(anyLong()), never());
     }
+  }
+
+  @Test
+  void suspendAccountPersistsTheReason() {
+    User user = new User();
+    user.setId(9L);
+
+    ArgumentCaptor<SqlUtils> valuesCaptor = ArgumentCaptor.forClass(SqlUtils.class);
+    try (MockedStatic<DB> db = mockStatic(DB.class);
+        MockedStatic<UnsuspendRequestRepository> requestRepo = mockStatic(UnsuspendRequestRepository.class)) {
+      db.when(() -> DB.update(anyString(), valuesCaptor.capture(), any(SqlUtils.class))).thenReturn(true);
+
+      UserRepository.suspendAccount(user, "Reported phishing attempt from this account");
+
+      // #492 Phase 3: suspendAccount() also supersedes any in-flight unsuspend request/decision
+      // for this target -- verified separately; not the captured call this test cares about.
+      requestRepo.verify(() -> UnsuspendRequestRepository.supersedePendingForTarget(9L,
+          "Account was suspended again"));
+
+      assertEquals("Reported phishing attempt from this account", fieldValue(valuesCaptor.getValue(), "suspension_reason"));
+    }
+  }
+
+  @Test
+  void restoreAccountClearsTheReason() {
+    User user = new User();
+    user.setId(9L);
+
+    ArgumentCaptor<SqlUtils> valuesCaptor = ArgumentCaptor.forClass(SqlUtils.class);
+    try (MockedStatic<DB> db = mockStatic(DB.class)) {
+      db.when(() -> DB.update(anyString(), valuesCaptor.capture(), any(SqlUtils.class))).thenReturn(true);
+
+      UserRepository.restoreAccount(user);
+
+      assertEquals(null, fieldValue(valuesCaptor.getValue(), "suspension_reason"));
+    }
+  }
+
+  @Test
+  void resolvePasswordMaxAgeDaysFallsBackOnBlankOrUnparseableOrNonPositive() {
+    assertEquals(90, UserRepository.resolvePasswordMaxAgeDays(null), "default on null");
+    assertEquals(90, UserRepository.resolvePasswordMaxAgeDays(""), "default on blank");
+    assertEquals(90, UserRepository.resolvePasswordMaxAgeDays("not-a-number"), "default on unparseable");
+    assertEquals(90, UserRepository.resolvePasswordMaxAgeDays("0"), "default on non-positive");
+    assertEquals(90, UserRepository.resolvePasswordMaxAgeDays("-5"), "default on negative");
+    assertEquals(180, UserRepository.resolvePasswordMaxAgeDays("180"), "valid value passes through");
+  }
+
+  private static String fieldValue(SqlUtils sqlUtils, String fieldName) {
+    for (com.simisinc.platform.infrastructure.database.SqlValue value : sqlUtils.getValues()) {
+      if (fieldName.equals(value.getFieldOrClause())) {
+        return value.getStringValue();
+      }
+    }
+    throw new AssertionError("No field named " + fieldName + " was set");
   }
 }

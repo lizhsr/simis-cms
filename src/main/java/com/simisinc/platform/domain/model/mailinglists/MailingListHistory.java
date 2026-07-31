@@ -35,6 +35,9 @@ public class MailingListHistory extends Entity {
   private Timestamp created = null;
   private String service = null;
   private int emailCount = 0;
+  private String subject = null;
+  private long blogPostId = -1;
+  private String mailchimpCampaignId = null;
 
   public MailingListHistory() {
   }
@@ -85,5 +88,29 @@ public class MailingListHistory extends Entity {
 
   public void setEmailCount(int emailCount) {
     this.emailCount = emailCount;
+  }
+
+  public String getSubject() {
+    return subject;
+  }
+
+  public void setSubject(String subject) {
+    this.subject = subject;
+  }
+
+  public long getBlogPostId() {
+    return blogPostId;
+  }
+
+  public void setBlogPostId(long blogPostId) {
+    this.blogPostId = blogPostId;
+  }
+
+  public String getMailchimpCampaignId() {
+    return mailchimpCampaignId;
+  }
+
+  public void setMailchimpCampaignId(String mailchimpCampaignId) {
+    this.mailchimpCampaignId = mailchimpCampaignId;
   }
 }

@@ -16,8 +16,11 @@
 
 package com.simisinc.platform.presentation.widgets.cms;
 
+import com.simisinc.platform.application.LoadUserCommand;
+import com.simisinc.platform.application.UserCommand;
 import com.simisinc.platform.application.cms.LoadBlogCommand;
 import com.simisinc.platform.application.cms.LoadBlogPostCommand;
+import com.simisinc.platform.domain.model.User;
 import com.simisinc.platform.domain.model.cms.Blog;
 import com.simisinc.platform.domain.model.cms.BlogPost;
 import com.simisinc.platform.infrastructure.persistence.cms.BlogPostRepository;
@@ -64,13 +67,27 @@ public class BlogPostWidget extends GenericWidget {
     }
     context.getRequest().setAttribute("blogPost", blogPost);
 
-    // Set the HTML page title
-    context.setPageTitle(blogPost.getTitle() + " - " + blog.getName());
+    // Set the HTML page title -- already includes the blog name, so the container must not
+    // also append the WebPage's own title (e.g. a wildcard page like /news/*) on top of it
+    context.setComposedPageTitle(blogPost.getTitle() + " - " + blog.getName());
     if (StringUtils.isNotBlank(blogPost.getSummary())) {
       context.setPageDescription(blogPost.getSummary());
     }
     if (StringUtils.isNotBlank(blogPost.getKeywords())) {
       context.setPageKeywords(blogPost.getKeywords());
+    }
+
+    // Set Article schema fields for JSON-LD (issue #403); a post that isn't actually published
+    // yet (visible here only to admin/content-manager, see retrieveValidatedBlogPostFromUrl)
+    // has nothing citable, so it gets no Article markup at all rather than a fabricated date
+    if (blogPost.getPublished() != null) {
+      context.setArticleHeadline(blogPost.getTitle());
+      context.setArticlePublishedDate(blogPost.getPublished());
+      context.setArticleModifiedDate(blogPost.getModified());
+      User author = LoadUserCommand.loadUser(blogPost.getCreatedBy());
+      if (author != null) {
+        context.setArticleAuthorName(UserCommand.name(author));
+      }
     }
 
     // Show the editor
@@ -106,6 +123,16 @@ public class BlogPostWidget extends GenericWidget {
       return null;
     }
     return blogPost;
+  }
+
+  public WidgetContext post(WidgetContext context) {
+    // deletePost is submitted via a real POST (issue #358 moved state-changing admin actions
+    // off GET query strings), so it arrives here rather than in action() below. Dispatch
+    // through the same table action() uses for a GET caller.
+    if ("deletePost".equals(context.getParameter("action"))) {
+      return action(context);
+    }
+    return context;
   }
 
   public WidgetContext action(WidgetContext context) {

@@ -80,7 +80,7 @@
                   <input type="password" class="no-gap" value="" placeholder="<c:out value="${empty siteProperty.value ? 'not set' : 'value hidden'}"/>" disabled />
                 </c:when>
                 <c:otherwise>
-                  <input type="password" class="no-gap" name="${siteProperty.name}" value="" autocomplete="new-password" placeholder="<c:out value="${empty siteProperty.value ? 'not set' : 'value hidden; leave blank to keep it'}"/>" />
+                  <input type="password" class="no-gap" name="${siteProperty.name}" value="" autocomplete="new-password" placeholder="<c:out value="${empty siteProperty.value ? 'not set' : 'value hidden; leave blank to keep it'}"/>"<c:if test="${siteProperty.name eq 'captcha.google.secretkey'}"> aria-describedby="captchaGoogleSecretkeyHelpText"</c:if><c:if test="${siteProperty.name eq 'bi.superset.secret'}"> aria-describedby="biSupersetSecretHelpText"</c:if><c:if test="${siteProperty.name eq 'bi.metabase.secret'}"> aria-describedby="biMetabaseSecretHelpText"</c:if> />
                 </c:otherwise>
               </c:choose>
             </c:when>
@@ -151,7 +151,7 @@
             <c:when test="${siteProperty.type eq 'url'}">
               <div class="input-group">
                 <span class="input-group-label"><i class="fa fa-link"></i></span>
-                <input class="input-group-field" id="${siteProperty.id}" type="text" name="${siteProperty.name}" placeholder="http://..." value="<c:out value="${siteProperty.value}"/>">
+                <input class="input-group-field" id="${siteProperty.id}" type="text" name="${siteProperty.name}" placeholder="http://..." value="<c:out value="${siteProperty.value}"/>"<c:if test="${siteProperty.name eq 'elearning.lrs.url'}"> aria-describedby="elearningLrsUrlHelpText"</c:if><c:if test="${siteProperty.name eq 'elearning.moodle.url'}"> aria-describedby="elearningMoodleUrlHelpText"</c:if><c:if test="${siteProperty.name eq 'elearning.perls.url'}"> aria-describedby="elearningPerlsUrlHelpText"</c:if><c:if test="${siteProperty.name eq 'bi.superset.url'}"> aria-describedby="biSupersetUrlHelpText"</c:if><c:if test="${siteProperty.name eq 'bi.metabase.url'}"> aria-describedby="biMetabaseUrlHelpText"</c:if>>
               </div>
             </c:when>
             <c:when test="${siteProperty.type eq 'image'}">
@@ -171,7 +171,7 @@
             </c:when>
             <c:when test="${siteProperty.type eq 'boolean'}">
               <div class="switch large">
-                <input class="switch-input" id="${siteProperty.name}-yes-no" type="checkbox" name="${siteProperty.name}" value="true"<c:if test="${siteProperty.value eq 'true'}"> checked</c:if>>
+                <input class="switch-input" id="${siteProperty.name}-yes-no" type="checkbox" name="${siteProperty.name}" value="true"<c:if test="${siteProperty.value eq 'true'}"> checked</c:if><c:if test="${siteProperty.name eq 'bi.enabled'}"> aria-describedby="biEnabledHelpText"</c:if><c:if test="${siteProperty.name eq 'bi.metabase.enabled'}"> aria-describedby="biMetabaseEnabledHelpText"</c:if>>
                 <label class="switch-paddle" for="${siteProperty.name}-yes-no">
                 <span class="switch-active" aria-hidden="true">Yes</span>
                 <span class="switch-inactive" aria-hidden="true">No</span>
@@ -189,14 +189,90 @@
               <input type="text" class="no-gap" name="${siteProperty.name}" value="${html:toHtml(siteProperty.value)}" disabled />
             </c:when>
             <c:otherwise>
-              <input type="text" class="no-gap" name="${siteProperty.name}" value="${html:toHtml(siteProperty.value)}" />
+              <input type="text" class="no-gap" name="${siteProperty.name}" value="${html:toHtml(siteProperty.value)}"<c:if test="${siteProperty.name eq 'captcha.service'}"> aria-describedby="captchaServiceHelpText"</c:if><c:if test="${siteProperty.name eq 'captcha.google.sitekey'}"> aria-describedby="captchaGoogleSitekeyHelpText"</c:if><c:if test="${siteProperty.name eq 'bi.superset.id'}"> aria-describedby="biSupersetIdHelpText"</c:if> />
             </c:otherwise>
           </c:choose>
+          <c:if test="${siteProperty.name eq 'captcha.service'}">
+            <p class="help-text" id="captchaServiceHelpText">Chooses which CAPTCHA challenge protects the site's public forms. The supported value is "google", which uses Google reCAPTCHA v2 with the Site Key and Secret Key below. Leave the Site Key blank to fall back to the platform's built-in text-image challenge instead.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'captcha.google.sitekey'}">
+            <p class="help-text" id="captchaGoogleSitekeyHelpText">The public key that connects the site's forms to Google reCAPTCHA v2. It's sent to every visitor's browser, so it's safe to expose. To get one, sign in to the <a href="https://www.google.com/recaptcha/admin/" target="_blank" rel="noreferrer">Google reCAPTCHA admin console</a>, register the site, and choose reCAPTCHA v2, Invisible reCAPTCHA badge, since these forms render a button rather than a checkbox. Google issues a Site Key and Secret Key together. Example format: 6LfPTnQUAAAAALSynteQ3vrs5MxxFd9NaSPyitRj (40 characters, letters and numbers only). A value that looks much shorter, much longer, or contains spaces was likely copied incorrectly.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'captcha.google.secretkey'}">
+            <p class="help-text" id="captchaGoogleSecretkeyHelpText">The private key the server uses to verify captcha responses with Google. Never share it or commit it to source control. Google generates it together with the Site Key above, on the same reCAPTCHA admin console page; it's a similar-length alphanumeric string. This value is stored encrypted and always appears blank here after saving. Leave it blank to keep the current key, or enter a new value to replace it.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.gptbot'}">
+            <p class="help-text">OpenAI's crawler for collecting training data for GPT models. Turning this off opts out of GPT model training only -- OpenAI's separate live-citation crawler (OAI-SearchBot, below) and on-demand user fetcher (ChatGPT-User, below) are controlled independently.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.oai-searchbot'}">
+            <p class="help-text">OpenAI's crawler for real-time ChatGPT search results and citations. Unlike GPTBot above, this doesn't train future models -- it fetches pages to help answer live user queries, so turning this off is closer to an "exclude from ChatGPT answers" opt-out than a training opt-out.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.chatgpt-user'}">
+            <p class="help-text">OpenAI's on-demand fetcher, triggered when a specific ChatGPT user's query causes the assistant to visit this page directly (for example, via browsing or a GPT Action). Per OpenAI's own documentation, because these fetches are initiated by a live user, this crawler may not always honor this opt-out.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.claudebot'}">
+            <p class="help-text">Anthropic's crawler for collecting training data for Claude models. Turning this off opts out of Claude model training only -- Anthropic's separate search-indexing crawler (Claude-SearchBot, below) and on-demand user fetcher (Claude-User, below) are controlled independently.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.claude-searchbot'}">
+            <p class="help-text">Anthropic's crawler for indexing pages so Claude can find and cite them in real-time answers -- separate from ClaudeBot's model-training use above.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.claude-user'}">
+            <p class="help-text">Anthropic's on-demand fetcher, triggered when a specific Claude user's query causes the assistant to visit this page directly. Per Anthropic's own documentation, because these fetches are initiated by a live user, this crawler may not always honor this opt-out.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.google-extended'}">
+            <p class="help-text">Controls whether Google may use this site's content to train Gemini and other generative AI features. Distinct from Google's regular search crawler (Googlebot) -- turning this off does not remove the site from Google Search results, only from AI training use. Google states no separate crawler or markup governs appearing in AI Overviews/AI Mode; that rides on standard Search indexing.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.perplexitybot'}">
+            <p class="help-text">Perplexity's crawler that discovers and indexes pages for its AI answer engine. Perplexity states this crawler is not used for AI model training, though that specific claim is less independently verifiable than the equivalent OpenAI/Anthropic training-crawler distinctions above.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.perplexity-user'}">
+            <p class="help-text">Perplexity's on-demand fetcher, triggered when a specific user's query causes Perplexity to visit this page directly to help answer it. Per Perplexity's own documentation, this crawler generally does not honor robots.txt rules at all, so this opt-out is more of a stated preference than an enforceable block.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'robots.ai.ccbot'}">
+            <p class="help-text">Common Crawl's general-purpose crawler. Its dataset is reused by many different research labs and companies to train a wide range of models, not just one -- turning this off is the broadest of these opt-outs, but doesn't name a specific model or company.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'elearning.lrs.url'}">
+            <p class="help-text" id="elearningLrsUrlHelpText">This connects to a Learning Record Store (LRS) using xAPI, a learning-data standard created by the DoD's Advanced Distributed Learning (ADL) Initiative and encouraged for DoD systems under DoD Instruction 1322.26. ADL's own reference LRS (<a href="https://github.com/adlnet/ADL_LRS" target="_blank" rel="noreferrer">adlnet/ADL_LRS</a>) is now archived following the Initiative's 2025 shutdown. <a href="https://github.com/yetanalytics/lrsql" target="_blank" rel="noreferrer">Yet Analytics' SQL LRS</a> -- built by the first vendor to pass the DoD's full ADL LRS Test Suite -- is an actively maintained open-source alternative.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'elearning.moodle.url'}">
+            <p class="help-text" id="elearningMoodleUrlHelpText">Moodle is the world's most widely used open-source learning management system, created in 1999 by Martin Dougiamas and first released in 2002 -- now with an estimated 200+ million users and still under active development (<a href="https://github.com/moodle/moodle" target="_blank" rel="noreferrer">moodle/moodle</a>). Other actively maintained open-source LMS options include Open edX, Canvas LMS, Sakai, and Chamilo, though Moodle remains the largest by installed base.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'elearning.perls.url'}">
+            <p class="help-text" id="elearningPerlsUrlHelpText">PERLS (PERvasive Learning System) is a mobile, personalized microlearning app for informal and on-the-job training, developed and funded by the DoD's Advanced Distributed Learning (ADL) Initiative. Like ADL's LRS above, it's now archived following the Initiative's 2025 shutdown (<a href="https://github.com/adlnet/perls" target="_blank" rel="noreferrer">adlnet/perls</a>). Unlike LRS, no actively maintained open-source equivalent was found -- the closest comparisons are commercial microlearning platforms (e.g. Axonify, TalentCards), not open-source projects.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'bi.enabled'}">
+            <p class="help-text" id="biEnabledHelpText">Turns on embedding dashboards from a separately hosted Apache Superset instance (this does not install or host Superset itself). There is currently no admin screen for placing a dashboard on a page -- a developer adds one by hand-editing that page's XML template with a <code>dashboardValue</code> (the Superset dashboard ID) and <code>dashboardEmbeddedId</code> (the embed ID Superset generates when embedding is enabled for that dashboard).</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'bi.superset.url'}">
+            <p class="help-text" id="biSupersetUrlHelpText">The base URL of your organization's Superset instance, for example <code>https://superset.example.com</code>. That instance must have the <code>EMBEDDED_SUPERSET</code> feature flag enabled and CORS configured to allow this site's domain before embedding will work.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'bi.superset.id'}">
+            <p class="help-text" id="biSupersetIdHelpText">Despite the label, this is not an API client ID -- it's the <strong>username</strong> of a Superset user account. Sent together with the Superset Secret below to log in to your Superset instance's API. Use a dedicated service account (with permission to read the dashboards you plan to embed and to request guest tokens) rather than a personal login.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'bi.superset.secret'}">
+            <p class="help-text" id="biSupersetSecretHelpText">Despite the label, this is not a static API secret -- it's the <strong>password</strong> for the Superset account named above. This value is stored encrypted and always appears blank here after saving; leave it blank to keep the current password, or enter a new value to replace it.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'bi.metabase.enabled'}">
+            <p class="help-text" id="biMetabaseEnabledHelpText">Turns on embedding dashboards from a separately hosted Metabase instance (this does not install or host Metabase itself), independent of the Superset setting above -- both can be enabled at once if you have dashboards in each. As with Superset, there is currently no admin screen for placing a dashboard on a page -- a developer adds one by hand-editing that page's XML template with a <code>dashboardValue</code> (the Metabase dashboard ID).</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'bi.metabase.url'}">
+            <p class="help-text" id="biMetabaseUrlHelpText">The base URL of your organization's Metabase instance, for example <code>https://metabase.example.com</code>. Unlike Superset, no feature flag needs to be enabled on the Metabase side -- static embedding is available out of the box. In Metabase, go to Admin settings &gt; Embedding and turn on embedding, then Share &gt; Embed on each dashboard you want to make embeddable here.</p>
+          </c:if>
+          <c:if test="${siteProperty.name eq 'bi.metabase.secret'}">
+            <p class="help-text" id="biMetabaseSecretHelpText">The embedding secret key from Metabase's Admin settings &gt; Embedding page. Unlike Superset, this is a single shared key (not a username/password pair) used to sign embed requests directly -- anyone with this value can view any dashboard you've published for embedding, so treat it like a password. This value is stored encrypted and always appears blank here after saving; leave it blank to keep the current key, or enter a new value to replace it.</p>
+          </c:if>
         </td>
       </tr>
     </c:forEach>
     </tbody>
   </table>
+  <c:if test="${prefix eq 'captcha'}">
+    <p class="help-text">reCAPTCHA v2 protects public forms across the site (for example, the contact form, account registration, newsletter signup, and job/business listings) wherever that form has captcha enabled. Changes take effect immediately on next page load.</p>
+    <p><a href="${ctx}/contact-us" target="_blank" class="button radius secondary">Test CAPTCHA</a></p>
+  </c:if>
+  <c:if test="${prefix eq 'robots'}">
+    <p class="help-text">Controls what <a href="${ctx}/robots.txt" target="_blank" rel="noreferrer">/robots.txt</a> tells web crawlers. Admin pages are always excluded regardless of these settings. Each toggle below opts a specific AI crawler out of reading this site -- on by default, matching how the site behaved before these controls existed. A crawler being "off" here is a request, not an enforcement mechanism: well-behaved crawlers honor robots.txt, but nothing stops a crawler from ignoring it.</p>
+  </c:if>
   <div class="button-container">
     <input type="submit" class="button radius success" value="Save" />
     <a href="${ctx}/admin" class="button radius secondary">Cancel</a>

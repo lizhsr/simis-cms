@@ -18,12 +18,16 @@ package com.simisinc.platform.infrastructure.scheduler;
 
 import com.simisinc.platform.infrastructure.database.DataSource;
 import com.simisinc.platform.infrastructure.instance.InstanceManager;
+import com.simisinc.platform.infrastructure.scheduler.admin.CapabilityGrantExpirationJob;
 import com.simisinc.platform.infrastructure.scheduler.admin.DatasetsDownloadAndSyncJob;
 import com.simisinc.platform.infrastructure.scheduler.audit.AuditLogIntegrityJob;
 import com.simisinc.platform.infrastructure.scheduler.audit.AuditLogRetentionJob;
+import com.simisinc.platform.infrastructure.scheduler.cms.FormSubmissionFailureRetentionJob;
 import com.simisinc.platform.infrastructure.scheduler.cms.LoadSystemFilesJob;
 import com.simisinc.platform.infrastructure.scheduler.cms.RecordWebPageHitJob;
+import com.simisinc.platform.infrastructure.scheduler.cms.SearchAnalyticsCleanupJob;
 import com.simisinc.platform.infrastructure.scheduler.cms.SessionsPiiScrubJob;
+import com.simisinc.platform.infrastructure.scheduler.cms.SystemHealthCheckCleanupJob;
 import com.simisinc.platform.infrastructure.scheduler.cms.SystemHealthJob;
 import com.simisinc.platform.infrastructure.scheduler.cms.WebPageHitSnapshotJob;
 import com.simisinc.platform.infrastructure.scheduler.cms.WebPageHitsCleanupJob;
@@ -32,6 +36,9 @@ import com.simisinc.platform.infrastructure.scheduler.cms.WebVitalsCleanupJob;
 import com.simisinc.platform.infrastructure.scheduler.ecommerce.OrderManagementProcessNewOrders;
 import com.simisinc.platform.infrastructure.scheduler.ecommerce.OrderManagementProcessShippingUpdates;
 import com.simisinc.platform.infrastructure.scheduler.login.UserTokensCleanupJob;
+import com.simisinc.platform.infrastructure.scheduler.mailinglists.EmailClassificationJob;
+import com.simisinc.platform.infrastructure.scheduler.mailinglists.MailingListQuarantineJob;
+import com.simisinc.platform.infrastructure.scheduler.mailinglists.NewsletterQueueJob;
 import com.simisinc.platform.infrastructure.scheduler.medicine.ProcessMedicineSchedulesJob;
 import com.simisinc.platform.infrastructure.scheduler.socialmedia.InstagramMediaSnapshotJob;
 import org.apache.commons.logging.Log;
@@ -61,16 +68,19 @@ import static org.jobrunr.server.BackgroundJobServerConfiguration.usingStandardB
 public class SchedulerManager {
 
   private static ServletContext servletContext = null;
+  private static volatile StorageProvider storageProvider = null;
   private static Log LOG = LogFactory.getLog(SchedulerManager.class);
 
   // Jobs for every replica
-  public static final String SYSTEM_HEALTH_JOB = "SystemHealth";
   public static final String LOAD_SYSTEM_FILES_JOB = "LoadSystemFiles";
   public static final String RECORD_WEB_PAGE_HITS_JOB = "RecordWebPageHits";
 
   // Jobs to be run once across many replicas
+  public static final String SYSTEM_HEALTH_JOB = "SystemHealth";
+  public static final String SYSTEM_HEALTH_CHECK_CLEANUP_JOB = "SystemHealthCheckCleanup";
   public static final String WEB_PAGE_HIT_SNAPSHOT_JOB = "WebPageHitSnapshot";
   public static final String WEB_PAGE_HITS_CLEANUP_JOB = "WebPageHitsCleanup";
+  public static final String SEARCH_ANALYTICS_CLEANUP_JOB = "SearchAnalyticsCleanup";
   public static final String WEB_VITALS_AGGREGATION_JOB = "WebVitalsAggregation";
   public static final String WEB_VITALS_CLEANUP_JOB = "WebVitalsCleanup";
   public static final String USER_TOKENS_CLEANUP_JOB = "UserTokensCleanup";
@@ -82,6 +92,11 @@ public class SchedulerManager {
   public static final String SESSIONS_PII_SCRUB_JOB = "SessionsPiiScrub";
   public static final String AUDIT_LOG_RETENTION_JOB = "AuditLogRetention";
   public static final String AUDIT_LOG_INTEGRITY_JOB = "AuditLogIntegrity";
+  public static final String CAPABILITY_GRANT_EXPIRATION_JOB = "CapabilityGrantExpiration";
+  public static final String EMAIL_CLASSIFICATION_JOB = "EmailClassification";
+  public static final String MAILING_LIST_QUARANTINE_JOB = "MailingListQuarantine";
+  public static final String FORM_SUBMISSION_FAILURE_RETENTION_JOB = "FormSubmissionFailureRetention";
+  public static final String NEWSLETTER_QUEUE_JOB = "NewsletterQueue";
 
   // Jobs which can be run by multiple clients
   public static final String DATASETS_DOWNLOAD_AND_SYNC_JOB = "DatasetsDownloadAndSync";
@@ -119,6 +134,7 @@ public class SchedulerManager {
 
       // Configure the storage
       StorageProvider jobStorageProvider = (inMemoryStorage ? new InMemoryStorageProvider() : SqlStorageProviderFactory.using(DataSource.getDataSource(), null, StorageProviderUtils.DatabaseOptions.CREATE));
+      storageProvider = jobStorageProvider;
 
       // Initialize the scheduler
       JobRunr.configure()
@@ -144,14 +160,19 @@ public class SchedulerManager {
           .initialize();
 
       // These background jobs are run by every node
-      // BackgroundJob.scheduleRecurrently(SYSTEM_HEALTH_JOB, Cron.every15seconds(), SystemHealthJob::execute);
       BackgroundJob.scheduleRecurrently(LOAD_SYSTEM_FILES_JOB, Cron.every5minutes(), LoadSystemFilesJob::execute);
       BackgroundJob.scheduleRecurrently(RECORD_WEB_PAGE_HITS_JOB, Cron.every15seconds(), RecordWebPageHitJob::execute);
 
       // These jobs need to be run by at least 1 node, preferably not the web-only nodes
       if (canRunClusterJobs) {
+        // Distributed-locked (LockManager) so exactly one node writes each interval's checks --
+        // see SystemHealthJob's own javadoc for why this isn't a per-replica "every node" job.
+        BackgroundJob.scheduleRecurrently(SYSTEM_HEALTH_JOB, Cron.minutely(), SystemHealthJob::execute);
+        BackgroundJob.scheduleRecurrently(SYSTEM_HEALTH_CHECK_CLEANUP_JOB, Cron.daily(4, 20), SystemHealthCheckCleanupJob::execute);
         BackgroundJob.scheduleRecurrently(WEB_PAGE_HIT_SNAPSHOT_JOB, Cron.every5minutes(), WebPageHitSnapshotJob::execute);
         BackgroundJob.scheduleRecurrently(WEB_PAGE_HITS_CLEANUP_JOB, Cron.daily(4), WebPageHitsCleanupJob::execute);
+        // Offset from the other 4am-ish cleanup jobs so they aren't all competing for DB time at once
+        BackgroundJob.scheduleRecurrently(SEARCH_ANALYTICS_CLEANUP_JOB, Cron.daily(4, 10), SearchAnalyticsCleanupJob::execute);
         BackgroundJob.scheduleRecurrently(WEB_VITALS_AGGREGATION_JOB, Cron.daily(23), WebVitalsAggregationJob::execute);
         BackgroundJob.scheduleRecurrently(WEB_VITALS_CLEANUP_JOB, Cron.daily(4, 5), WebVitalsCleanupJob::execute);
         BackgroundJob.scheduleRecurrently(USER_TOKENS_CLEANUP_JOB, Cron.hourly(), UserTokensCleanupJob::execute);
@@ -163,6 +184,17 @@ public class SchedulerManager {
         BackgroundJob.scheduleRecurrently(SESSIONS_PII_SCRUB_JOB, Cron.daily(4, 45), SessionsPiiScrubJob::execute);
         BackgroundJob.scheduleRecurrently(AUDIT_LOG_RETENTION_JOB, Cron.daily(4, 15), AuditLogRetentionJob::execute);
         BackgroundJob.scheduleRecurrently(AUDIT_LOG_INTEGRITY_JOB, Cron.daily(4, 30), AuditLogIntegrityJob::execute);
+        BackgroundJob.scheduleRecurrently(CAPABILITY_GRANT_EXPIRATION_JOB, Cron.hourly(),
+            CapabilityGrantExpirationJob::execute);
+        // Once daily is plenty for a backlog job, and keeps it off ZeroBounce's real per-lookup API
+        // billing except when there's actually unvalidated backlog; runs ahead of the 4am cluster above
+        // so it isn't competing with those jobs for DB/API time.
+        BackgroundJob.scheduleRecurrently(EMAIL_CLASSIFICATION_JOB, Cron.daily(3), EmailClassificationJob::execute);
+        // Runs after EMAIL_CLASSIFICATION_JOB so same-day classifications are quarantined the same
+        // night, not a full day later.
+        BackgroundJob.scheduleRecurrently(MAILING_LIST_QUARANTINE_JOB, Cron.daily(3, 30), MailingListQuarantineJob::execute);
+        BackgroundJob.scheduleRecurrently(FORM_SUBMISSION_FAILURE_RETENTION_JOB, Cron.daily(5), FormSubmissionFailureRetentionJob::execute);
+        BackgroundJob.scheduleRecurrently(NEWSLETTER_QUEUE_JOB, Cron.minutely(), NewsletterQueueJob::execute);
       }
     } catch (Exception se) {
       LOG.error("Error starting jobrunr: ", se);
@@ -170,11 +202,25 @@ public class SchedulerManager {
   }
 
   public static void shutdown() {
+    // Null the field before JobRunr.destroy() closes the underlying provider, not after: a reader
+    // that observes null gets the correct "unavailable" signal, rather than a reference to a
+    // provider that JobRunr.destroy() is concurrently closing underneath it. This narrows, but
+    // doesn't fully eliminate, the shutdown race for a request already mid-call when destroy()
+    // runs -- accepted as low-risk for an admin-only diagnostic path exercised only around
+    // container shutdown, not a sustained concurrency guarantee.
+    storageProvider = null;
     JobRunr.destroy();
     servletContext = null;
   }
 
   public static ServletContext getServletContext() {
     return servletContext;
+  }
+
+  /** The JobRunr StorageProvider backing the scheduler, so admin tooling (e.g. the Job Queue
+   * Dashboard, issue #464) can query job counts and lists directly. Null until {@link #startup}
+   * has run. */
+  public static StorageProvider getStorageProvider() {
+    return storageProvider;
   }
 }

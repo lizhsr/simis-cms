@@ -42,6 +42,7 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.simisinc.platform.presentation.controller.RequestConstants.*;
 
@@ -63,10 +64,20 @@ public class WebContainerCommand implements Serializable {
   private static final String ERROR_MESSAGE = "ERROR_MESSAGE";
   private static final String REQUEST_OBJECT = "REQUEST_OBJECT";
 
+  // Page-level attributes that PageServlet computes once (before the section/column/widget walk
+  // below even starts) and that must stay visible for the *entire* request -- to every widget's
+  // own execute()/JSP turn below, and to main.jsp's EL after the walk finishes -- unlike ordinary
+  // per-widget request attributes, which are intentionally wiped between widgets so one widget's
+  // leftovers can't bleed into the next widget's render. These names must be kept in sync with the
+  // request.setAttribute(...) calls in PageServlet.java that set them.
+  private static final Set<String> PAGE_LEVEL_ATTRIBUTE_NAMES = Set.of(
+      "pageEditMode", "pageLayoutMode", "hasDraft", "widgetLibraryJson");
+
 
   public static boolean processWidgets(WebContainerContext webContainerContext, List<Section> sections,
                                        ContainerRenderInfo containerRenderInfo, Map<String, String> coreData,
-                                       String contextPath, String pagePath, UserSession userSession, Map<String, String> themePropertyMap) throws Exception {
+                                       String contextPath, String pagePath, UserSession userSession, Map<String, String> themePropertyMap,
+                                       boolean pageLayoutMode) throws Exception {
 
     LOG.debug("Processing container... " + containerRenderInfo.getName() + ": " + sections.size());
 
@@ -125,7 +136,7 @@ public class WebContainerCommand implements Serializable {
           while (attributeNames.hasMoreElements()) {
             String name = (String) attributeNames.nextElement();
 //              LOG.debug("Found attribute: " + name);
-            if (!name.startsWith("controller") && !name.startsWith("master") && !name.startsWith("request")) {
+            if (!isPreservedAcrossWidgetReset(name)) {
               request.removeAttribute(name);
             }
           }
@@ -320,13 +331,11 @@ public class WebContainerCommand implements Serializable {
             PageRenderInfo pageRenderInfo = (PageRenderInfo) containerRenderInfo;
             if (StringUtils.isNotBlank(widgetContext.getPageTitle())) {
               if (webContainerContext.getWebPage() != null) {
-                pageRenderInfo.setTitle(
-                    widgetContext.getPageTitle() +
-                        (StringUtils.isNotBlank(webContainerContext.getWebPage().getTitle()) ? " - " + webContainerContext.getWebPage().getTitle() : ""));
+                pageRenderInfo.setTitle(composePageTitle(widgetContext.getPageTitle(), widgetContext.isPageTitleComposed(),
+                    webContainerContext.getWebPage().getTitle()));
               } else if (webContainerContext.getPage() != null) {
-                pageRenderInfo.setTitle(
-                    widgetContext.getPageTitle() +
-                        (StringUtils.isNotBlank(webContainerContext.getPage().getTitle()) ? " - " + webContainerContext.getPage().getTitle() : ""));
+                pageRenderInfo.setTitle(composePageTitle(widgetContext.getPageTitle(), widgetContext.isPageTitleComposed(),
+                    webContainerContext.getPage().getTitle()));
               }
             }
             if (StringUtils.isNotBlank(widgetContext.getPageDescription())) {
@@ -334,6 +343,49 @@ public class WebContainerCommand implements Serializable {
             }
             if (StringUtils.isNotBlank(widgetContext.getPageKeywords())) {
               pageRenderInfo.setKeywords(widgetContext.getPageKeywords());
+            }
+            // Product schema fields (issue #403), e.g. from ProductNameWidget
+            if (StringUtils.isNotBlank(widgetContext.getProductName())) {
+              pageRenderInfo.setProductName(widgetContext.getProductName());
+            }
+            if (StringUtils.isNotBlank(widgetContext.getProductDescription())) {
+              pageRenderInfo.setProductDescription(widgetContext.getProductDescription());
+            }
+            if (StringUtils.isNotBlank(widgetContext.getProductImageUrl())) {
+              pageRenderInfo.setProductImageUrl(widgetContext.getProductImageUrl());
+            }
+            if (widgetContext.getProductPrice() != null) {
+              pageRenderInfo.setProductPrice(widgetContext.getProductPrice());
+            }
+            if (widgetContext.getProductLowPrice() != null) {
+              pageRenderInfo.setProductLowPrice(widgetContext.getProductLowPrice());
+            }
+            if (StringUtils.isNotBlank(widgetContext.getProductCurrency())) {
+              pageRenderInfo.setProductCurrency(widgetContext.getProductCurrency());
+            }
+            if (StringUtils.isNotBlank(widgetContext.getProductAvailability())) {
+              pageRenderInfo.setProductAvailability(widgetContext.getProductAvailability());
+            }
+            if (widgetContext.getProductOfferCount() != null) {
+              pageRenderInfo.setProductOfferCount(widgetContext.getProductOfferCount());
+            }
+            // Article schema fields (issue #403), e.g. from BlogPostWidget
+            if (StringUtils.isNotBlank(widgetContext.getArticleHeadline())) {
+              pageRenderInfo.setArticleHeadline(widgetContext.getArticleHeadline());
+            }
+            if (widgetContext.getArticlePublishedDate() != null) {
+              pageRenderInfo.setArticlePublishedDate(widgetContext.getArticlePublishedDate());
+            }
+            if (widgetContext.getArticleModifiedDate() != null) {
+              pageRenderInfo.setArticleModifiedDate(widgetContext.getArticleModifiedDate());
+            }
+            if (StringUtils.isNotBlank(widgetContext.getArticleAuthorName())) {
+              pageRenderInfo.setArticleAuthorName(widgetContext.getArticleAuthorName());
+            }
+            // FAQPage schema (issue #416), e.g. from FaqWidget -- additive since more than one
+            // FaqWidget on the same page should combine into one FAQPage, not overwrite
+            if (widgetContext.getFaqQuestions() != null && !widgetContext.getFaqQuestions().isEmpty()) {
+              pageRenderInfo.addFaqQuestions(widgetContext.getFaqQuestions());
             }
           }
 
@@ -470,7 +522,45 @@ public class WebContainerCommand implements Serializable {
               sectionRenderInfo.addColumn(columnRenderInfo);
             }
             columnRenderInfo.addWidget(widgetRenderInfo);
+          } else if (pageLayoutMode) {
+            // Same gap as the column/section fallback below, one level deeper: a widget that's been
+            // added but not configured yet (e.g. a "content" widget added via the composition
+            // canvas's "+Widget" control, which has no uniqueId preference until the admin sets one)
+            // produces no output at all, so without this it never gets a WidgetRenderInfo and
+            // therefore no [data-editor-widget] wrapper -- invisible and unremovable even though
+            // it's really in draft_page_xml. Give it a placeholder entry so an admin can see,
+            // configure via the prefs panel, and remove it like any other widget. Public rendering
+            // (pageLayoutMode false) is untouched -- a genuinely empty widget still renders nothing
+            // on a real page.
+            WidgetRenderInfo widgetRenderInfo = new WidgetRenderInfo(widget, "");
+            if (!sectionAdded) {
+              sectionAdded = true;
+              containerRenderInfo.addSection(sectionRenderInfo);
+            }
+            if (!columnAdded) {
+              columnAdded = true;
+              sectionRenderInfo.addColumn(columnRenderInfo);
+            }
+            columnRenderInfo.addWidget(widgetRenderInfo);
           }
+        }
+
+        // A column normally only enters render info once one of its widgets produces content
+        // (above) -- correct for public rendering, since an empty grid cell shouldn't take up
+        // space on a real page. But it means a column with zero widgets (e.g. one just created
+        // by the composition canvas's "+Column"/"+Section" controls, before anything has been
+        // added to it) is otherwise omitted from render info entirely, so it never gets a
+        // rendered [data-editor-column]/[data-editor-section] element -- leaving it with no
+        // "+Widget" trigger to populate it and no "✕ Column" trigger to remove it, invisible and
+        // stuck until the whole draft is discarded. In pageLayoutMode, add it anyway so an admin
+        // building a layout can see, populate, and remove it like any other column/section.
+        if (pageLayoutMode && !columnAdded) {
+          columnAdded = true;
+          if (!sectionAdded) {
+            sectionAdded = true;
+            containerRenderInfo.addSection(sectionRenderInfo);
+          }
+          sectionRenderInfo.addColumn(columnRenderInfo);
         }
       }
     }
@@ -587,5 +677,42 @@ public class WebContainerCommand implements Serializable {
       LOG.error("Malformed widget JSP path, skipping include: " + jspPath);
       return false;
     }
+  }
+
+  /**
+   * Returns true when a request attribute must survive the per-widget reset above. That reset
+   * exists so one widget's leftover request attributes can't bleed into the next widget's JSP
+   * render, but it must not sweep up attributes that are computed once for the whole page --
+   * those need to still be present both for every later widget's own execute()/JSP turn, and
+   * for main.jsp's EL after the entire section/column/widget walk (across page, header, and
+   * footer) is done. The controller/master/request prefixes are the codebase's existing
+   * convention for that (see e.g. {@link RequestConstants#MASTER_WEB_PAGE},
+   * {@link RequestConstants#SHOW_MAIN_MENU}); {@link #PAGE_LEVEL_ATTRIBUTE_NAMES} covers the
+   * page-level attributes PageServlet sets under names that don't happen to follow it.
+   *
+   * @param name the request attribute name
+   * @return true if the attribute must not be removed
+   */
+  protected static boolean isPreservedAcrossWidgetReset(String name) {
+    return name.startsWith("controller") || name.startsWith("master") || name.startsWith("request")
+        || PAGE_LEVEL_ATTRIBUTE_NAMES.contains(name);
+  }
+
+  /**
+   * Combines a widget's page title with the container's (WebPage or Page) own title. A widget
+   * that has already composed its title in full (e.g. a blog post title with its blog name
+   * appended, via {@link WidgetContext#setComposedPageTitle}) opts out of this so the container's
+   * title is not appended a second time on top of it.
+   *
+   * @param widgetPageTitle    the widget's page title, expected non-blank
+   * @param pageTitleComposed  true if the widget already composed its title in full
+   * @param containerTitle     the WebPage's or Page's own title, may be blank
+   * @return the title to render
+   */
+  protected static String composePageTitle(String widgetPageTitle, boolean pageTitleComposed, String containerTitle) {
+    if (pageTitleComposed || StringUtils.isBlank(containerTitle)) {
+      return widgetPageTitle;
+    }
+    return widgetPageTitle + " - " + containerTitle;
   }
 }

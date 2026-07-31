@@ -23,6 +23,10 @@ import com.simisinc.platform.application.cms.*;
 import com.simisinc.platform.application.items.LoadCategoryCommand;
 import com.simisinc.platform.application.items.LoadCollectionCommand;
 import com.simisinc.platform.application.items.LoadItemCommand;
+import com.simisinc.platform.application.items.SaveItemCommand;
+import com.simisinc.platform.domain.model.SocialMediaLink;
+import com.simisinc.platform.infrastructure.persistence.SocialMediaLinkRepository;
+import com.simisinc.platform.domain.model.cms.FaqQuestion;
 import com.simisinc.platform.domain.model.cms.MenuTab;
 import com.simisinc.platform.domain.model.cms.Stylesheet;
 import com.simisinc.platform.domain.model.cms.TableOfContents;
@@ -221,13 +225,11 @@ public class PageServlet extends HttpServlet {
       WebPage webPage = LoadWebPageCommand.loadByLink(pagePath);
       if (webPage != null) {
         // Determine if this is a draft page
-        if (webPage.getDraft()) {
-          if (!userSession.hasRole("admin") && !userSession.hasRole("content-manager")) {
-            LOG.error("DRAFT FOUND, no access: " + pagePath + " " + request.getRemoteAddr());
-            controllerSession.clearAllWidgetData();
-            response.sendError(HttpServletResponse.SC_NOT_FOUND);
-            return;
-          }
+        if (isDraftBlockedFromPublicAccess(webPage, userSession)) {
+          LOG.error("DRAFT FOUND, no access: " + pagePath + " " + request.getRemoteAddr());
+          controllerSession.clearAllWidgetData();
+          response.sendError(HttpServletResponse.SC_NOT_FOUND);
+          return;
         }
         // Enforce publish schedule and expiry for non-editors
         if (!userSession.hasRole("admin") && !userSession.hasRole("content-manager")) {
@@ -283,9 +285,18 @@ public class PageServlet extends HttpServlet {
       boolean pageEditMode = "true".equals(request.getSession().getAttribute(SessionConstants.PAGE_EDIT_MODE))
           && EditorPermissionCommand.canEditContent(userSession);
       boolean pageLayoutMode = pageEditMode && EditorPermissionCommand.canBuildLayout(userSession);
-      if (pageEditMode) {
-        request.setAttribute("pageEditMode", "true");
-      }
+      // "pageEditMode"/"pageLayoutMode"/"hasDraft"/"widgetLibraryJson" (below) are page-level
+      // request attributes read via JSP EL (main.jsp, content.jsp) and directly by widgets
+      // (ItemsListWidget) throughout the rest of this request, including inside
+      // WebContainerCommand.processWidgets()'s per-widget loop -- their names must stay in sync
+      // with WebContainerCommand.PAGE_LEVEL_ATTRIBUTE_NAMES, which exempts them from that loop's
+      // per-widget request attribute reset.
+      //
+      // pageEditMode must be published unconditionally, like pageLayoutMode below -- leaving it
+      // unset on the false path lets JSP EL's implicit page/request/session/application scope
+      // search fall through to the raw session attribute read above, which can still be "true"
+      // from a previously-authenticated, more-privileged user on this same HttpSession.
+      request.setAttribute("pageEditMode", pageEditMode ? "true" : "false");
       boolean hasDraft = pageLayoutMode && webPage != null && StringUtils.isNotBlank(webPage.getDraftPageXml());
       request.setAttribute("pageLayoutMode", pageLayoutMode ? "true" : "false");
       request.setAttribute("hasDraft", hasDraft ? "true" : "false");
@@ -456,7 +467,10 @@ public class PageServlet extends HttpServlet {
         }
         try {
           long itemId = Long.parseLong(request.getParameter("itemId"));
-          int newOrder = Integer.parseInt(request.getParameter("newOrder"));
+          // newOrder is validated here (fails fast with 400 on non-numeric input, matching the
+          // pre-existing request contract) but is intentionally not persisted below -- see the
+          // NOT_IMPLEMENTED response for why.
+          Integer.parseInt(request.getParameter("newOrder"));
           Item item = ItemRepository.findById(itemId);
           if (item == null) {
             response.setContentType("application/json");
@@ -464,8 +478,14 @@ public class PageServlet extends HttpServlet {
             response.getWriter().print("{\"success\":false,\"error\":\"Item not found\"}");
             return;
           }
+          // Items have no stored order/position: the items table (and the Item domain model /
+          // ItemRepository backing it) has no order column, unlike e.g. mailing_lists.list_order
+          // or menu_items.item_order. Adding one is a schema change (new column + migration) that
+          // this fix does not make unilaterally, so report the gap honestly instead of lying about
+          // success -- mirrors MediaApiController#handleUpload's "not yet implemented" response.
           response.setContentType("application/json");
-          response.getWriter().print("{\"success\":true,\"message\":\"Item reordered\"}");
+          response.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
+          response.getWriter().print("{\"success\":false,\"error\":\"Reordering items is not implemented: items have no stored order\"}");
         } catch (Exception e) {
           response.setContentType("application/json");
           response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -534,7 +554,13 @@ public class PageServlet extends HttpServlet {
           newItem.setCreatedBy(userSession.getUserId());
           newItem.setModifiedBy(userSession.getUserId());
 
-          Item saved = ItemRepository.save(newItem);
+          Item saved = SaveItemCommand.saveItem(newItem);
+          if (saved == null) {
+            response.setContentType("application/json");
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().print("{\"success\":false,\"error\":\"Item could not be saved\"}");
+            return;
+          }
           response.setContentType("application/json");
           response.getWriter().print("{\"success\":true,\"message\":\"Item created\",\"itemId\":" + saved.getId() + "}");
         } catch (Exception e) {
@@ -580,32 +606,32 @@ public class PageServlet extends HttpServlet {
           int after = intParam(request, "after", -1);
           switch (mutateAction) {
             case "addSection":
-              MutateLayoutCommand.addSection(webPage, after, request.getParameter("class"));
+              MutateLayoutCommand.addSection(webPage, after, request.getParameter("class"), userSession.getUserId());
               break;
             case "removeSection":
-              MutateLayoutCommand.removeSection(webPage, s);
+              MutateLayoutCommand.removeSection(webPage, s, userSession.getUserId());
               break;
             case "setSectionClass":
-              MutateLayoutCommand.setSectionClass(webPage, s, request.getParameter("class"));
+              MutateLayoutCommand.setSectionClass(webPage, s, request.getParameter("class"), userSession.getUserId());
               break;
             case "addColumn":
-              MutateLayoutCommand.addColumn(webPage, s, after, request.getParameter("class"));
+              MutateLayoutCommand.addColumn(webPage, s, after, request.getParameter("class"), userSession.getUserId());
               break;
             case "removeColumn":
-              MutateLayoutCommand.removeColumn(webPage, s, c);
+              MutateLayoutCommand.removeColumn(webPage, s, c, userSession.getUserId());
               break;
             case "setColumnClass":
-              MutateLayoutCommand.setColumnClass(webPage, s, c, request.getParameter("class"));
+              MutateLayoutCommand.setColumnClass(webPage, s, c, request.getParameter("class"), userSession.getUserId());
               break;
             case "addWidget":
               MutateLayoutCommand.addWidget(webPage, s, c, after,
-                  request.getParameter("widgetName"), request.getParameter("prefs"));
+                  request.getParameter("widgetName"), request.getParameter("prefs"), userSession.getUserId());
               break;
             case "removeWidget":
-              MutateLayoutCommand.removeWidget(webPage, s, c, w);
+              MutateLayoutCommand.removeWidget(webPage, s, c, w, userSession.getUserId());
               break;
             case "setWidgetPreferences":
-              MutateLayoutCommand.setWidgetPreferences(webPage, s, c, w, request.getParameter("prefs"));
+              MutateLayoutCommand.setWidgetPreferences(webPage, s, c, w, request.getParameter("prefs"), userSession.getUserId());
               break;
             default:
               response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -651,6 +677,8 @@ public class PageServlet extends HttpServlet {
       Map<String, String> sitePropertyMap = LoadSitePropertyCommand.loadAsMap("site");
       Map<String, String> themePropertyMap = LoadSitePropertyCommand.loadAsMap("theme");
       Map<String, String> socialPropertyMap = LoadSitePropertyCommand.loadAsMap("social");
+      // issue #516: an admin-editable list of (platform, url) pairs, not a fixed set of properties
+      List<SocialMediaLink> socialMediaLinkList = SocialMediaLinkRepository.findAll();
       Map<String, String> analyticsPropertyMap = LoadSitePropertyCommand.loadAsMap("analytics");
       // Never render a malformed tracking id into the public page's script tags
       AnalyticsTrackingIdCommand.sanitize(analyticsPropertyMap);
@@ -813,20 +841,9 @@ public class PageServlet extends HttpServlet {
 
       // Set canonical URL for SEO (issue #401)
       String siteUrl = (String) sitePropertyMap.get("site.url");
-      if (StringUtils.isNotBlank(siteUrl)) {
-        String canonicalUrl = null;
-        if (thisItem != null) {
-          canonicalUrl = siteUrl + "/items/" + thisCollection.getUniqueId() + "/" + thisItem.getUniqueId();
-        } else if (thisCollection != null) {
-          canonicalUrl = siteUrl + "/items/" + thisCollection.getUniqueId();
-        } else if (webPage != null && StringUtils.isNotBlank(webPage.getLink())) {
-          canonicalUrl = siteUrl + webPage.getLink();
-        } else if (StringUtils.isNotBlank(pagePath) && !pagePath.equals("/")) {
-          canonicalUrl = siteUrl + pagePath;
-        }
-        if (StringUtils.isNotBlank(canonicalUrl)) {
-          pageRenderInfo.setCanonicalUrl(canonicalUrl);
-        }
+      String canonicalUrl = computeCanonicalUrl(siteUrl, pagePath, webPage, thisItem, thisCollection);
+      if (StringUtils.isNotBlank(canonicalUrl)) {
+        pageRenderInfo.setCanonicalUrl(canonicalUrl);
       }
 
       // Set Open Graph metadata for social sharing (issue #402)
@@ -836,14 +853,6 @@ public class PageServlet extends HttpServlet {
           pageRenderInfo.setPageType("article");
         } else {
           pageRenderInfo.setPageType("website");
-        }
-      }
-
-      // Generate JSON-LD structured data for search engines and AI (issue #403)
-      if (StringUtils.isNotBlank(siteUrl) && StringUtils.isNotBlank(sitePropertyMap.get("site.name"))) {
-        String jsonLd = generateJsonLdData(pageRenderInfo, siteUrl, sitePropertyMap, thisItem, thisCollection);
-        if (StringUtils.isNotBlank(jsonLd)) {
-          pageRenderInfo.setJsonLdData(jsonLd);
         }
       }
 
@@ -868,10 +877,10 @@ public class PageServlet extends HttpServlet {
         }
         pageRenderInfo.setTargetWidget(targetWidget);
 
-        // Verify a token exists
+        // Verify the token matches this session's form token
         String formToken = request.getParameter("token");
-        if (StringUtils.isEmpty(formToken)) {
-          LOG.error("DEVELOPER: A FORM TOKEN IS REQUIRED " + pagePath + " " + request.getRemoteAddr());
+        if (!isFormTokenValid(formToken, userSession.getFormToken())) {
+          LOG.error("DEVELOPER: A VALID FORM TOKEN IS REQUIRED " + pagePath + " " + request.getRemoteAddr());
           controllerSession.clearAllWidgetData();
           response.sendError(HttpServletResponse.SC_NOT_FOUND);
           return;
@@ -879,9 +888,25 @@ public class PageServlet extends HttpServlet {
       }
 
       // Render the page first
-      if (WebContainerCommand.processWidgets(webContainerContext, pageRef.getSections(), pageRenderInfo, coreData, contextPath, pagePath, userSession, themePropertyMap)) {
+      if (WebContainerCommand.processWidgets(webContainerContext, pageRef.getSections(), pageRenderInfo, coreData, contextPath, pagePath, userSession, themePropertyMap, pageLayoutMode)) {
         // The widget processor handled the response, immediately return
         return;
+      }
+
+      // Generate JSON-LD structured data for search engines and AI (issue #403). This runs after
+      // processWidgets so it can see page metadata a content widget (e.g. ProductNameWidget)
+      // bridged into pageRenderInfo during its own execute() -- generating it earlier would only
+      // ever see the generic item/collection/webPage title & description, never a widget-specific
+      // one, and real ecommerce product data (unlike an Item/Collection) is ONLY ever available
+      // this way -- there's no URL routing to a specific Product for PageServlet to resolve itself.
+      // processWidgets so it can see page metadata a content widget (e.g. BlogPostWidget) bridged
+      // into pageRenderInfo during its own execute() -- generating it earlier would only ever see
+      // the generic item/collection/webPage title & description, never a widget-specific one.
+      if (StringUtils.isNotBlank(siteUrl) && StringUtils.isNotBlank(sitePropertyMap.get("site.name"))) {
+        String jsonLd = generateJsonLdData(pageRenderInfo, siteUrl, pagePath, sitePropertyMap, thisItem, thisCollection, webPage);
+        if (StringUtils.isNotBlank(jsonLd)) {
+          pageRenderInfo.setJsonLdData(jsonLd);
+        }
       }
 
       // Render the header
@@ -892,12 +917,12 @@ public class PageServlet extends HttpServlet {
         requestHeader = WebContainerLayoutCommand.retrieveHeader(request.getServletContext(), widgetLibrary);
       }
       HeaderRenderInfo headerRenderInfo = new HeaderRenderInfo(requestHeader, pagePath);
-      WebContainerCommand.processWidgets(webContainerContext, requestHeader.getSections(), headerRenderInfo, coreData, contextPath, pagePath, userSession, themePropertyMap);
+      WebContainerCommand.processWidgets(webContainerContext, requestHeader.getSections(), headerRenderInfo, coreData, contextPath, pagePath, userSession, themePropertyMap, pageLayoutMode);
 
       // Render the footer
       Footer footer = WebContainerLayoutCommand.retrieveFooter(request.getServletContext(), widgetLibrary);
       FooterRenderInfo footerRenderInfo = new FooterRenderInfo(footer, pagePath);
-      WebContainerCommand.processWidgets(webContainerContext, footer.getSections(), footerRenderInfo, coreData, contextPath, pagePath, userSession, themePropertyMap);
+      WebContainerCommand.processWidgets(webContainerContext, footer.getSections(), footerRenderInfo, coreData, contextPath, pagePath, userSession, themePropertyMap, pageLayoutMode);
 
       // Finalize the controller session (zero out the widget's session data)
       controllerSession.clearAllWidgetData();
@@ -919,6 +944,7 @@ public class PageServlet extends HttpServlet {
       request.setAttribute("sitePropertyMap", sitePropertyMap);
       request.setAttribute("themePropertyMap", themePropertyMap);
       request.setAttribute("socialPropertyMap", socialPropertyMap);
+      request.setAttribute("socialMediaLinkList", socialMediaLinkList);
       request.setAttribute("analyticsPropertyMap", analyticsPropertyMap);
       request.setAttribute("ecommercePropertyMap", ecommercePropertyMap);
 
@@ -987,9 +1013,9 @@ public class PageServlet extends HttpServlet {
     }
   }
 
-  private static String generateJsonLdData(PageRenderInfo pageRenderInfo, String siteUrl,
-                                            Map<String, String> sitePropertyMap,
-                                            Item item, Collection collection) {
+  static String generateJsonLdData(PageRenderInfo pageRenderInfo, String siteUrl, String pagePath,
+                                    Map<String, String> sitePropertyMap,
+                                    Item item, Collection collection, WebPage webPage) {
     try {
       ObjectMapper mapper = new ObjectMapper();
       Map<String, Object> jsonLd = new LinkedHashMap<>();
@@ -1013,22 +1039,37 @@ public class PageServlet extends HttpServlet {
             organization.put("logo", siteLogo);
           }
         }
+
+        // sameAs links this Organization to its social profiles (issue #403)
+        List<SocialMediaLink> socialMediaLinkList = SocialMediaLinkRepository.findAll();
+        if (socialMediaLinkList != null && !socialMediaLinkList.isEmpty()) {
+          List<String> sameAs = new ArrayList<>();
+          for (SocialMediaLink socialMediaLink : socialMediaLinkList) {
+            if (StringUtils.isNotBlank(socialMediaLink.getUrl())) {
+              sameAs.add(socialMediaLink.getUrl());
+            }
+          }
+          if (!sameAs.isEmpty()) {
+            organization.put("sameAs", sameAs);
+          }
+        }
+
         graph.add(organization);
       }
 
       // Add WebPage schema for all pages
-      Map<String, Object> webPage = new LinkedHashMap<>();
-      webPage.put("@type", "WebPage");
+      Map<String, Object> webPageSchema = new LinkedHashMap<>();
+      webPageSchema.put("@type", "WebPage");
       if (StringUtils.isNotBlank(pageRenderInfo.getPageUrl())) {
-        webPage.put("url", pageRenderInfo.getPageUrl());
+        webPageSchema.put("url", pageRenderInfo.getPageUrl());
       }
       if (StringUtils.isNotBlank(pageRenderInfo.getTitle())) {
-        webPage.put("name", pageRenderInfo.getTitle());
+        webPageSchema.put("name", pageRenderInfo.getTitle());
       }
       if (StringUtils.isNotBlank(pageRenderInfo.getDescription())) {
-        webPage.put("description", pageRenderInfo.getDescription());
+        webPageSchema.put("description", pageRenderInfo.getDescription());
       }
-      webPage.put("isPartOf", Collections.singletonMap("@id", siteUrl + "#organization"));
+      webPageSchema.put("isPartOf", Collections.singletonMap("@id", siteUrl + "#organization"));
 
       // Add image if available
       if (StringUtils.isNotBlank(pageRenderInfo.getImageUrl())) {
@@ -1036,34 +1077,293 @@ public class PageServlet extends HttpServlet {
         if (imageUrl.startsWith("/")) {
           imageUrl = siteUrl + imageUrl;
         }
-        webPage.put("image", imageUrl);
+        webPageSchema.put("image", imageUrl);
       }
-      graph.add(webPage);
 
-      // Add Product schema if this is an item (catalog product)
-      if (item != null && StringUtils.isNotBlank(item.getName())) {
-        Map<String, Object> product = new LinkedHashMap<>();
-        product.put("@type", "Product");
-        product.put("name", item.getName());
-        if (StringUtils.isNotBlank(item.getDescription())) {
-          product.put("description", item.getDescription());
+      // dateModified/datePublished are freshness signals AI answer engines weigh for citation
+      // (issue #403). datePublished prefers publishAt (the page's actual go-live date, which can
+      // differ from when the row was first created via scheduled publishing) over created.
+      if (webPage != null) {
+        if (webPage.getModified() != null) {
+          webPageSchema.put("dateModified", webPage.getModified().toInstant().toString());
         }
-        if (StringUtils.isNotBlank(pageRenderInfo.getImageUrl())) {
-          String imageUrl = pageRenderInfo.getImageUrl();
-          if (imageUrl.startsWith("/")) {
-            imageUrl = siteUrl + imageUrl;
-          }
-          product.put("image", imageUrl);
+        Timestamp publishedDate = webPage.getPublishAt() != null ? webPage.getPublishAt() : webPage.getCreated();
+        if (publishedDate != null) {
+          webPageSchema.put("datePublished", publishedDate.toInstant().toString());
         }
+      }
+
+      graph.add(webPageSchema);
+
+      // Add BreadcrumbList schema for pages more than one level deep (issue #403)
+      List<Map<String, Object>> breadcrumbItemList = computeBreadcrumbList(siteUrl, pagePath, item, collection);
+      if (breadcrumbItemList != null && !breadcrumbItemList.isEmpty()) {
+        Map<String, Object> breadcrumbList = new LinkedHashMap<>();
+        breadcrumbList.put("@type", "BreadcrumbList");
+        breadcrumbList.put("itemListElement", breadcrumbItemList);
+        graph.add(breadcrumbList);
+      }
+
+      // Add FAQPage schema if this page has a FaqWidget (issue #416)
+      Map<String, Object> faqPage = computeFaqSchema(pageRenderInfo);
+      if (faqPage != null) {
+        graph.add(faqPage);
+      }
+
+      // Add Product schema for a real ecommerce product page (issue #403); bridged from
+      // pageRenderInfo the same way Article is, since a product's identity is never resolvable
+      // from the URL the way an Item/Collection's is (see computeProductSchema)
+      Map<String, Object> product = computeProductSchema(pageRenderInfo, siteUrl);
+      if (product != null) {
         graph.add(product);
       }
 
       jsonLd.put("@graph", graph);
-      return mapper.writeValueAsString(jsonLd);
+      return escapeForInlineScript(mapper.writeValueAsString(jsonLd));
     } catch (Exception e) {
       LOG.warn("Error generating JSON-LD data: " + e.getMessage());
       return null;
     }
+  }
+
+  /**
+   * Builds the Product schema for a real ecommerce product page (issue #403). Gated on
+   * productName since that's only set by an ecommerce widget (e.g. ProductNameWidget) for a page
+   * that actually has one -- every other page type leaves it blank. A single-SKU product (or one
+   * where every SKU shares the same price) gets a plain Offer; a product with multiple,
+   * differently-priced SKUs gets an AggregateOffer instead, since there's no one price to quote.
+   */
+  static Map<String, Object> computeProductSchema(PageRenderInfo pageRenderInfo, String siteUrl) {
+    if (StringUtils.isBlank(pageRenderInfo.getProductName())) {
+      return null;
+    }
+    Map<String, Object> product = new LinkedHashMap<>();
+    product.put("@type", "Product");
+    product.put("name", pageRenderInfo.getProductName());
+    if (StringUtils.isNotBlank(pageRenderInfo.getProductDescription())) {
+      product.put("description", pageRenderInfo.getProductDescription());
+    }
+    if (StringUtils.isNotBlank(pageRenderInfo.getProductImageUrl())) {
+      String imageUrl = pageRenderInfo.getProductImageUrl();
+      if (imageUrl.startsWith("/")) {
+        imageUrl = siteUrl + imageUrl;
+      }
+      product.put("image", imageUrl);
+    }
+
+    BigDecimal price = pageRenderInfo.getProductPrice();
+    BigDecimal lowPrice = pageRenderInfo.getProductLowPrice();
+    if (price != null || lowPrice != null) {
+      Map<String, Object> offer = new LinkedHashMap<>();
+      String currency = StringUtils.isNotBlank(pageRenderInfo.getProductCurrency()) ? pageRenderInfo.getProductCurrency() : "USD";
+      if (price != null) {
+        offer.put("@type", "Offer");
+        offer.put("price", price.stripTrailingZeros().toPlainString());
+      } else {
+        offer.put("@type", "AggregateOffer");
+        offer.put("lowPrice", lowPrice.stripTrailingZeros().toPlainString());
+        if (pageRenderInfo.getProductOfferCount() != null) {
+          offer.put("offerCount", pageRenderInfo.getProductOfferCount());
+        }
+      }
+      offer.put("priceCurrency", currency);
+      if (StringUtils.isNotBlank(pageRenderInfo.getProductAvailability())) {
+        offer.put("availability", pageRenderInfo.getProductAvailability());
+      }
+      product.put("offers", offer);
+    }
+
+    return product;
+  }
+
+  /**
+   * Builds the BreadcrumbList itemListElement array for pages at a URL depth of two or more
+   * (issue #403); shallower pages return null since a single-level trail is redundant with the
+   * site nav. Each ancestor segment's name is resolved the same way the page itself would be
+   * resolved (LoadWebPageCommand, including wildcard/template pages) so a breadcrumb never shows
+   * a path segment that the app wouldn't actually route to; a segment with no matching page falls
+   * back to a humanized version of the URL segment rather than leaving a gap in the trail.
+   */
+  static List<Map<String, Object>> computeBreadcrumbList(String siteUrl, String pagePath, Item item, Collection collection) {
+    if (StringUtils.isBlank(siteUrl) || StringUtils.isBlank(pagePath)) {
+      return null;
+    }
+    List<String> segments = new ArrayList<>();
+    for (String segment : pagePath.split("/")) {
+      if (StringUtils.isNotBlank(segment)) {
+        segments.add(segment);
+      }
+    }
+    if (segments.size() < 2) {
+      return null;
+    }
+
+    List<Map<String, Object>> itemListElement = new ArrayList<>();
+    itemListElement.add(breadcrumbListItem(1, "Home", siteUrl));
+
+    StringBuilder pathSoFar = new StringBuilder();
+    for (int i = 0; i < segments.size(); i++) {
+      String segment = segments.get(i);
+      pathSoFar.append('/').append(segment);
+      boolean isLeaf = (i == segments.size() - 1);
+
+      String name = null;
+      if (isLeaf && item != null && StringUtils.isNotBlank(item.getName())) {
+        name = item.getName();
+      } else if (collection != null && segment.equalsIgnoreCase(collection.getUniqueId())) {
+        // The collection's own segment, whether it's the leaf (collection listing page) or an
+        // ancestor of the leaf (an item detail page nested under it)
+        name = collection.getName();
+      }
+      if (StringUtils.isBlank(name)) {
+        WebPage segmentPage = LoadWebPageCommand.loadByLink(pathSoFar.toString());
+        if (segmentPage != null && StringUtils.isNotBlank(segmentPage.getTitle())) {
+          name = segmentPage.getTitle();
+        }
+      }
+      if (StringUtils.isBlank(name)) {
+        name = humanizeUrlSegment(segment);
+      }
+
+      itemListElement.add(breadcrumbListItem(i + 2, name, siteUrl + pathSoFar));
+    }
+    return itemListElement;
+  }
+
+  private static Map<String, Object> breadcrumbListItem(int position, String name, String url) {
+    Map<String, Object> listItem = new LinkedHashMap<>();
+    listItem.put("@type", "ListItem");
+    listItem.put("position", position);
+    listItem.put("name", name);
+    listItem.put("item", url);
+    return listItem;
+  }
+
+  /**
+   * Builds the FAQPage schema for a page with one or more FaqWidgets (issue #416). Uses
+   * FaqQuestion's pre-stripped answerText, not the widget's own rendered HTML, since Google's FAQ
+   * rich result requires the acceptedAnswer text to contain no markup.
+   */
+  static Map<String, Object> computeFaqSchema(PageRenderInfo pageRenderInfo) {
+    List<FaqQuestion> faqQuestionList = pageRenderInfo.getFaqQuestions();
+    if (faqQuestionList == null || faqQuestionList.isEmpty()) {
+      return null;
+    }
+    List<Map<String, Object>> mainEntity = new ArrayList<>();
+    for (FaqQuestion faqQuestion : faqQuestionList) {
+      Map<String, Object> question = new LinkedHashMap<>();
+      question.put("@type", "Question");
+      question.put("name", faqQuestion.getQuestion());
+      Map<String, Object> acceptedAnswer = new LinkedHashMap<>();
+      acceptedAnswer.put("@type", "Answer");
+      acceptedAnswer.put("text", faqQuestion.getAnswerText());
+      question.put("acceptedAnswer", acceptedAnswer);
+      mainEntity.add(question);
+    }
+    Map<String, Object> faqPage = new LinkedHashMap<>();
+    faqPage.put("@type", "FAQPage");
+    faqPage.put("mainEntity", mainEntity);
+    return faqPage;
+  }
+
+  /**
+   * Turns a URL segment like "getting-started" into "Getting Started" for use as a breadcrumb
+   * label when no page title is available to describe that part of the path.
+   */
+  static String humanizeUrlSegment(String segment) {
+    String decoded;
+    try {
+      decoded = java.net.URLDecoder.decode(segment, java.nio.charset.StandardCharsets.UTF_8);
+    } catch (Exception e) {
+      decoded = segment;
+    }
+    String[] words = decoded.replace('-', ' ').replace('_', ' ').split(" ");
+    StringBuilder result = new StringBuilder();
+    for (String word : words) {
+      if (word.isEmpty()) {
+        continue;
+      }
+      if (result.length() > 0) {
+        result.append(' ');
+      }
+      result.append(Character.toUpperCase(word.charAt(0)));
+      if (word.length() > 1) {
+        result.append(word.substring(1));
+      }
+    }
+    return result.length() > 0 ? result.toString() : segment;
+  }
+
+  /**
+   * Jackson's JSON escaping only guarantees syntactically valid JSON (quotes, backslashes,
+   * control characters) -- it has no notion of the surrounding HTML, so a value containing
+   * "</script>" passes straight through. The browser's HTML parser looks for that literal byte
+   * sequence regardless of JSON string context, so an unescaped "</script>" inside e.g. a
+   * product name closes the tag early and lets an attacker-controlled payload execute. Escaping
+   * every '<', '>' and '&' to its JSON \\uXXXX form (valid inside a JSON string, and decodes back
+   * to the original character on parse) neutralizes that and any other HTML/comment breakout,
+   * without changing the parsed JSON-LD content.
+   */
+  static String escapeForInlineScript(String json) {
+    if (json == null) {
+      return null;
+    }
+    return json.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026");
+  }
+
+  /**
+   * Computes the canonical URL for a page response (issue #401), or null when there's nothing to
+   * canonicalize (blank site.url, or no page-identity source matched). pagePath is always safe to
+   * append as-is: it comes from request.getRequestURI(), which never carries the query string, so
+   * this can't reflect attacker-controlled query parameters into the tag. A wildcard/dynamic-page
+   * match (see LoadWebPageCommand#loadByLink) returns the template's own link (e.g. "/news/*"),
+   * not a real URL, so that case is excluded in favor of the actual pagePath.
+   */
+  static String computeCanonicalUrl(String siteUrl, String pagePath, WebPage webPage, Item item, Collection collection) {
+    if (StringUtils.isBlank(siteUrl)) {
+      return null;
+    }
+    if (item != null && collection != null) {
+      return siteUrl + "/items/" + collection.getUniqueId() + "/" + item.getUniqueId();
+    }
+    if (collection != null) {
+      return siteUrl + "/items/" + collection.getUniqueId();
+    }
+    if (webPage != null && StringUtils.isNotBlank(webPage.getLink()) && !webPage.getLink().endsWith("/*")) {
+      return siteUrl + webPage.getLink();
+    }
+    if (StringUtils.isNotBlank(pagePath)) {
+      return siteUrl + pagePath;
+    }
+    return null;
+  }
+
+  /**
+   * Validates the "token" request parameter against this session's real form token before a
+   * POST/DELETE/action() widget dispatch is allowed past this fail-fast gate. WebContainerCommand
+   * independently re-validates the same token against the specific target widget before invoking
+   * it, so this check being wrong would not by itself open a bypass today -- but it should still
+   * reject what it claims to reject, both to fail fast (before the page-render work downstream)
+   * and so a future change to that later check can't silently lose CSRF coverage this one already
+   * appeared to provide.
+   */
+  static boolean isFormTokenValid(String requestToken, String sessionToken) {
+    return StringUtils.isNotEmpty(requestToken) && sessionToken != null && sessionToken.equals(requestToken);
+  }
+
+  /**
+   * A pending draft (draftPageXml) must not take an already-published page offline for the
+   * public: retrievePageForRequest() below always renders from pageXml, and draftPageXml is only
+   * ever substituted in for a layout builder previewing in edit mode (see the pageEditMode block
+   * further down) -- so a non-blank pageXml means there is still valid, unaffected published
+   * content to serve. Only a page that has never been published (pageXml blank) should 404 here
+   * for a non-editor while draft is true.
+   */
+  static boolean isDraftBlockedFromPublicAccess(WebPage webPage, UserSession userSession) {
+    if (!webPage.getDraft() || StringUtils.isNotBlank(webPage.getPageXml())) {
+      return false;
+    }
+    return !userSession.hasRole("admin") && !userSession.hasRole("content-manager");
   }
 
   private static int intParam(HttpServletRequest request, String name, int defaultValue) {

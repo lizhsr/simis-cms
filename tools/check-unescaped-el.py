@@ -77,6 +77,43 @@ NUMERIC = re.compile(
 # cover every occurrence. Add an entry only after tracing the value to its
 # source and confirming it is sanitized, validated, or structurally safe.
 ALLOWLIST: dict[str, str] = {
+    "${cspNonce}":
+        "The CSP nonce is generated per-request in PageServlet.java via SecureRandom bytes "
+        "through Base64.getUrlEncoder().withoutPadding() -- the URL-safe alphabet contains only "
+        "[A-Za-z0-9_-], so it cannot hold a quote, angle bracket, or any other markup-breaking "
+        "character in any context.",
+    "${errorMessage}":
+        "WebVitalsWidget.java sets this to the hardcoded literal \"Error loading performance "
+        "data\" on the catch path -- never derived from request input.",
+    "${summary.lcpP75 > 0 ? summary.lcpP75 : '—'}":
+        "WebVitalsWidget.VitalsSummary.lcpP75 is a Java primitive int (WebVitalsWidget.java); "
+        "the ternary's other branch is the fixed em-dash literal. Neither can carry markup.",
+    "${summary.inpP75 > 0 ? summary.inpP75 : '—'}":
+        "Same as lcpP75 -- VitalsSummary.inpP75 is a Java primitive int; the other branch is the "
+        "fixed em-dash literal.",
+    "${summary.fcpP75 > 0 ? summary.fcpP75 : '—'}":
+        "Same as lcpP75 -- VitalsSummary.fcpP75 is a Java primitive int; the other branch is the "
+        "fixed em-dash literal.",
+    "${summary.ttfbP75 > 0 ? summary.ttfbP75 : '—'}":
+        "Same as lcpP75 -- VitalsSummary.ttfbP75 is a Java primitive int; the other branch is the "
+        "fixed em-dash literal.",
+    "${summary.overallScore}":
+        "VitalsSummary.getOverallScore() (WebVitalsWidget.java) returns a Java primitive int "
+        "computed purely from status-string equality checks against fixed literals -- cannot "
+        "carry markup.",
+    "${summary.lcpStatus}":
+        "WebVitalsWidget.getStatus() (WebVitalsWidget.java) returns exactly one of the fixed "
+        "literals \"good\"/\"needsWork\"/\"poor\"; VitalsSummary.lcpStatus otherwise defaults to "
+        "the fixed literal \"unknown\". No other value is possible, so this cannot break out of "
+        "the class=\"badge badge-...\" attribute.",
+    "${summary.clsStatus}":
+        "Same as lcpStatus -- clsStatus is set by the same getStatus() and defaults the same way.",
+    "${summary.inpStatus}":
+        "Same as lcpStatus -- inpStatus is set by the same getStatus() and defaults the same way.",
+    "${summary.fcpStatus}":
+        "Same as lcpStatus -- fcpStatus is set by the same getStatus() and defaults the same way.",
+    "${summary.ttfbStatus}":
+        "Same as lcpStatus -- ttfbStatus is set by the same getStatus() and defaults the same way.",
     "${mapCredentials.tileServerUrl}":
         "FindMapTilesCredentialsCommand.validatedTileServerUrl rejects quotes, whitespace, backslashes and angle brackets before the value is stored -- validated at the source instead of escaped at the sink",
     "${activity.messageHtml}":
@@ -103,6 +140,14 @@ ALLOWLIST: dict[str, str] = {
         "Every report that can reach the bar/line chart JSPs populates StatisticsData.value with `String.valueOf(rs.getLong(...))` over a COUNT/aggregate column, so the field holds only dig",
     "${extraHTMLContent}":
         "N/A -- the attribute is never set for this JSP, and cross-widget leakage of the attribute is prevented by an explicit per-widget request-attribute reset.",
+    "${facet.url}":
+        "ItemsSearchResultsWidget.buildFacetLinkUrl/buildUrl (ItemsSearchResultsWidget.java) build this from context.getUri() (the request path, which per HTTP semantics cannot legally contain a raw '\"') plus every param run through UrlCommand.encodeUri(), which percent-encodes all HTML metacharacters -- same reasoning as ${wikiLinkPrefix} below.",
+    "${activeFilter.clearUrl}":
+        "Same construction and reasoning as ${facet.url} above -- built by ItemsSearchResultsWidget.buildClearFilterUrl/buildUrl from context.getUri() + UrlCommand.encodeUri()'d params.",
+    "${(!empty categoryFacets || !empty dateFacets) ? 'medium-9' : 'medium-12'}":
+        "Ternary between two fixed CSS class literals -- same pattern as ${hideChartControls}/${hideChartTitle} below. No other value is possible.",
+    "${faqQuestion.answerHtml}":
+        "Same trust boundary as ${widget.content} below: an admin/content-manager-authored widget preference (FaqWidget.java), not user input. The question text is rendered via <c:out> in the same JSP; only the answer is intentionally raw, since it's meant to render as HTML.",
     "${file.baseUrl}":
         "None needed - the value contains no user input at all.",
     "${file.url}":
@@ -115,6 +160,8 @@ ALLOWLIST: dict[str, str] = {
         "SupersetWidget.java:56-59 sets this from a Java boolean via a ternary, so it is one of the two literals true/false and the operator's preference text is discarded after a 'true'.equals() comparison",
     "${hideChartTitle}":
         "Both attributes are set from a Java boolean via the ternary `hideChartTitle ? 'true' : 'false'` (and likewise for hideChartControls), so the request attribute is one of exactly two",
+    "${historyUrl}":
+        "Built by <c:url> tag with <c:param> elements (targetType, targetLabel=record.ipAddress) in blocked-ip-list.jsp/allowed-ip-list.jsp; <c:url> percent-encodes every <c:param> value, so record.ipAddress cannot inject markup into the href attribute even though it is operator/attacker-influenced data.",
     "${html}":
         "SAFE — the value is HTML by design and is run through HtmlCommand.cleanContent (jsoup Safelist.relaxed, which strips script/style tags and all on* handler attributes) before being",
     "${initialView}":
@@ -195,6 +242,14 @@ ALLOWLIST: dict[str, str] = {
     # Whitelist-constrained values (set to one of a small fixed set of literals).
     "${colorScheme}":
         "<c:choose> in main.jsp / embedded-layout.jsp maps colorSchemeMode to exactly one of 'dark', 'auto', or 'light' -- no other value is possible.",
+    "${range eq '1h' ? 'primary' : 'secondary'}":
+        "EL ternary: evaluates to one of the two literals 'primary'/'secondary' regardless of what range holds -- cannot carry markup.",
+    "${range eq '24h' ? 'primary' : 'secondary'}":
+        "EL ternary: evaluates to one of the two literals 'primary'/'secondary' regardless of what range holds -- cannot carry markup.",
+    "${range eq '7d' ? 'primary' : 'secondary'}":
+        "EL ternary: evaluates to one of the two literals 'primary'/'secondary' regardless of what range holds -- cannot carry markup.",
+    "${range eq '30d' ? 'primary' : 'secondary'}":
+        "EL ternary: evaluates to one of the two literals 'primary'/'secondary' regardless of what range holds -- cannot carry markup.",
 
     # JSTL loop-status objects (not user input).
     "${cartEntryStatus}":
@@ -217,6 +272,8 @@ ALLOWLIST: dict[str, str] = {
         "SaveMenuTabCommand.updateMenuItemLink() enforces a leading '/' prefix on save -- all stored links are relative internal paths.",
     "${webPage.link}":
         "SaveWebPageCommand rejects all external URLs via UrlCommand.isUrlValid() check (error if external) -- all stored web-page links are relative internal paths with no HTML metacharacters.",
+    "${webPage.showInSitemap}":
+        "WebPage.showInSitemap is a Java primitive `boolean` (domain/model/cms/WebPage.java:51, getter `public boolean getShowInSitemap()` at :173/:177) -- EL can only render it as the literal 'true' or 'false', never HTML metacharacters.",
     "${masterWebPage.link}":
         "Same as ${webPage.link}: SaveWebPageCommand enforces relative-only links; WebPage.link is always a site-internal path.",
     "${searchResult.link}":
@@ -251,6 +308,28 @@ ALLOWLIST: dict[str, str] = {
         "EditMyProfileFormWidget calls UrlCommand.getValidReturnPage() before setAttribute; that method rejects non-relative paths and any char outside [A-Za-z0-9/?&=#%._~+,;-].",
     "items/approve-item-button.jsp:${approveUrl}":
         "Built by <c:url> tag with <c:param> elements for each query parameter (action, widget, token, itemUniqueId, returnPage); <c:url> handles percent-encoding of parameter values and assembly of the URL.",
+    "admin/job-queue-dashboard.jsp:${stateFilterUrl}":
+        "Built by <c:url> tag with a <c:param name='state' value='${entry.key}'/> (job-queue-dashboard.jsp); entry.key only ever iterates over JobQueueDashboardWidget.loadStateCounts()'s fixed StateName.name() literals (SCHEDULED/ENQUEUED/PROCESSING/FAILED/SUCCEEDED), never request input, and <c:url>/<c:param> percent-encode the value regardless.",
+
+    # <fmt:formatDate> output with a fixed, all-numeric pattern: the JSTL tag renders a real
+    # Date/Timestamp through that pattern, so the output can only ever contain digits, '-',
+    # 'T', and ':' -- structurally unable to carry HTML metacharacters. Same reasoning as the
+    # existing ${thisDay} entry above, applied to a <c:set>-captured fmt:formatDate body instead
+    # of a direct call.
+    "${publishAtFormatted}":
+        "WebPage.publishAt (WebPage.java) is a java.sql.Timestamp, not a String. web-page-form.jsp "
+        "captures it via <c:set var='publishAtFormatted'><fmt:formatDate pattern=\"yyyy-MM-dd'T'HH:mm\" "
+        "value='${webPage.publishAt}'/></c:set> -- an all-numeric pattern (no locale-sensitive "
+        "month/day-name fields), so the rendered string can only contain [0-9T:-].",
+    "${expiresAtFormatted}":
+        "Same as ${publishAtFormatted}: WebPage.expiresAt is a java.sql.Timestamp formatted through "
+        "the identical fixed all-numeric pattern yyyy-MM-dd'T'HH:mm.",
+
+    # CSP nonce: generated per-request, never derived from any request input.
+    "${cspNonce}":
+        "PageServlet.java generates this per-request as SECURE_RANDOM.nextBytes(16) run through "
+        "Base64.getUrlEncoder().withoutPadding() -- the URL-safe alphabet is exactly [A-Za-z0-9_-], "
+        "which cannot contain a quote, angle bracket, or any other markup-breaking character.",
 }
 
 CONTEXT_HTML = "HTML"
@@ -408,11 +487,7 @@ def main() -> int:
     print("Summary: %d unallowlisted, %d allowlisted sites." % (len(findings), sum(allowed.values())))
 
     if args.strict:
-        # ATTR context is report-only pending #319 (icon/leftIcon attribute-context XSS fix).
-        # Once #319 merges, re-run with --strict-attr to confirm 0 ATTR findings, then drop
-        # this exclusion.
-        gate_findings = [(r, l, e, c) for r, l, e, c in findings if c != CONTEXT_ATTR]
-        if gate_findings:
+        if findings:
             print()
             print("FAIL: unescaped EL without a recorded justification.")
             print("Either wrap the value (<c:out>, js:escape, url:encodeUri), sanitize it at")

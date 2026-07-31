@@ -95,18 +95,32 @@
     <c:when test="${!empty masterWebPage.description}"><meta name="description" content="<c:out value="${masterWebPage.description}"/>"></c:when>
     <c:otherwise><meta name="description" content="<c:out value="${sitePropertyMap['site.description']}"/>"></c:otherwise>
   </c:choose>
-  <%-- Open Graph metadata for social sharing (issue #402) --%>
+  <%-- Open Graph + Twitter Card metadata (issue #402). Title/description use the same
+       widget-provided -> web page -> site-default cascade as the <title>/description tags above,
+       instead of only checking pageRenderInfo directly -- otherwise any page without a widget that
+       explicitly sets a page title/description (i.e. most pages that aren't a blog post or similar)
+       got no og:title/og:description at all, even though the primary tags rendered fine. --%>
+  <c:choose>
+    <c:when test="${!empty pageRenderInfo.title}"><c:set var="socialTitle" value="${pageRenderInfo.title}"/></c:when>
+    <c:when test="${!empty masterWebPage.title}"><c:set var="socialTitle" value="${masterWebPage.title}"/></c:when>
+    <c:otherwise><c:set var="socialTitle" value="${sitePropertyMap['site.name']}"/></c:otherwise>
+  </c:choose>
+  <c:choose>
+    <c:when test="${!empty pageRenderInfo.description}"><c:set var="socialDescription" value="${pageRenderInfo.description}"/></c:when>
+    <c:when test="${!empty masterWebPage.description}"><c:set var="socialDescription" value="${masterWebPage.description}"/></c:when>
+    <c:otherwise><c:set var="socialDescription" value="${sitePropertyMap['site.description']}"/></c:otherwise>
+  </c:choose>
   <c:if test="${!empty pageRenderInfo.pageType}">
     <meta name="og:type" content="<c:out value="${pageRenderInfo.pageType}"/>" />
   </c:if>
   <c:if test="${!empty pageRenderInfo.pageUrl}">
     <meta name="og:url" content="<c:out value="${pageRenderInfo.pageUrl}"/>" />
   </c:if>
-  <c:if test="${!empty pageRenderInfo.title}">
-    <meta name="og:title" content="<c:out value="${pageRenderInfo.title}"/>" />
+  <c:if test="${!empty socialTitle}">
+    <meta name="og:title" content="<c:out value="${socialTitle}"/>" />
   </c:if>
-  <c:if test="${!empty pageRenderInfo.description}">
-    <meta name="og:description" content="<c:out value="${pageRenderInfo.description}"/>" />
+  <c:if test="${!empty socialDescription}">
+    <meta name="og:description" content="<c:out value="${socialDescription}"/>" />
   </c:if>
   <c:choose>
     <c:when test="${!empty pageRenderInfo.imageUrl && fn:startsWith(pageRenderInfo.imageUrl, '/')}">
@@ -119,13 +133,12 @@
   <c:if test="${!empty sitePropertyMap['site.name']}">
     <meta name="og:site_name" content="<c:out value="${sitePropertyMap['site.name']}" />" />
   </c:if>
-  <%-- Twitter Card metadata (issue #402) --%>
   <meta name="twitter:card" content="summary_large_image" />
-  <c:if test="${!empty pageRenderInfo.title}">
-    <meta name="twitter:title" content="<c:out value="${pageRenderInfo.title}"/>" />
+  <c:if test="${!empty socialTitle}">
+    <meta name="twitter:title" content="<c:out value="${socialTitle}"/>" />
   </c:if>
-  <c:if test="${!empty pageRenderInfo.description}">
-    <meta name="twitter:description" content="<c:out value="${pageRenderInfo.description}"/>" />
+  <c:if test="${!empty socialDescription}">
+    <meta name="twitter:description" content="<c:out value="${socialDescription}"/>" />
   </c:if>
   <c:choose>
     <c:when test="${!empty pageRenderInfo.imageUrl && fn:startsWith(pageRenderInfo.imageUrl, '/')}">
@@ -323,7 +336,6 @@
   <c:if test="${pageEditMode eq 'true'}">
     <link rel="stylesheet" type="text/css" href="${ctx}/css/platform-editor.css?v=<%= VERSION %>" />
     <link rel="stylesheet" type="text/css" href="${ctx}/css/quill-2.0.3-snow.css" />
-    <link rel="stylesheet" type="text/css" href="${ctx}/css/overlay-editor-pane.css" />
   </c:if>
   <c:if test="${!empty pageCollection}">
     <style>
@@ -414,15 +426,23 @@
             <li<c:if test="${pageRenderInfo.name eq '/admin'}"> class="is-active"</c:if>><a href="${ctx}/admin"><i class="${font:far()} fa-home fa-fw"></i> <span>Welcome</span></a></li>
             <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/documentation')}"> class="is-active"</c:if>><a href="${ctx}/admin/documentation/wiki/Home"><i class="${font:far()} fa-book fa-fw"></i> <span>Documentation</span></a></li>
             <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/activity')}"> class="is-active"</c:if>><a href="${ctx}/admin/activity"><i class="${font:far()} fa-exchange-alt fa-fw"></i> <span>Activity</span></a></li>
+            <c:if test="${userSession.hasRole('admin')}">
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/health-dashboard')}"> class="is-active"</c:if>><a href="${ctx}/admin/health-dashboard"><i class="${font:far()} fa-heart-pulse fa-fw"></i> <span>System Health</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/job-queue-dashboard')}"> class="is-active"</c:if>><a href="${ctx}/admin/job-queue-dashboard"><i class="${font:far()} fa-list-check fa-fw"></i> <span>Job Queue</span></a></li>
+            </c:if>
           </ul>
           <%-- Community menu --%>
           <c:if test="${userSession.hasRole('admin') || userSession.hasRole('community-manager')}">
             <ul class="vertical menu">
               <li class="section-title">Community</li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/community/analytics')}"> class="is-active"</c:if>><a href="${ctx}/admin/community/analytics"><i class="${font:far()} fa-chart-line fa-fw"></i> <span>Analytics</span></a></li>
+              <c:if test="${userSession.hasRole('admin')}">
+                <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/web-vitals')}"> class="is-active"</c:if>><a href="${ctx}/admin/web-vitals"><i class="${font:far()} fa-tachometer-alt fa-fw"></i> <span>Web Vitals</span></a></li>
+              </c:if>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/form-')}"> class="is-active"</c:if>><a href="${ctx}/admin/form-data"><i class="${font:far()} fa-list-alt fa-fw"></i> <span>Form Data</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/mailing-list') && !fn:startsWith(pageRenderInfo.name, '/admin/mailing-list-properties')}"> class="is-active"</c:if>><a href="${ctx}/admin/mailing-lists"><i class="${font:far()} fa-envelope fa-fw"></i> <span>Mailing Lists</span></a></li>
-              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/user') || fn:startsWith(pageRenderInfo.name, '/admin/modify-user')}"> class="is-active"</c:if>><a href="${ctx}/admin/users"><i class="${font:far()} fa-user-circle fa-fw"></i> <span>Users</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/newsletter-send')}"> class="is-active"</c:if>><a href="${ctx}/admin/newsletter-send"><i class="${font:far()} fa-paper-plane fa-fw"></i> <span>Send Newsletter</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/user') || fn:startsWith(pageRenderInfo.name, '/admin/modify-user') || fn:startsWith(pageRenderInfo.name, '/admin/unsuspend-requests')}"> class="is-active"</c:if>><a href="${ctx}/admin/users"><i class="${font:far()} fa-user-circle fa-fw"></i> <span>Users</span></a></li>
               <c:if test="${userSession.hasRole('admin')}">
                 <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/group')}"> class="is-active"</c:if>><a href="${ctx}/admin/groups"><i class="${font:far()} fa-users fa-fw"></i> <span>User Groups</span></a></li>
               </c:if>
@@ -433,7 +453,7 @@
             <ul class="vertical menu">
               <li class="section-title">Content</li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/content/analytics')}"> class="is-active"</c:if>><a href="${ctx}/admin/content/analytics"><i class="${font:far()} fa-chart-line fa-fw"></i> <span>Analytics</span></a></li>
-              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/sitemap')}"> class="is-active"</c:if>><a href="${ctx}/admin/sitemap"><i class="${font:far()} fa-sitemap fa-fw"></i> <span>Site Map</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/sitemap')}"> class="is-active"</c:if>><a href="${ctx}/admin/sitemap"><i class="${font:far()} fa-sitemap fa-fw"></i> <span>Navigation Menu</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/web-page')}"> class="is-active"</c:if>><a href="${ctx}/admin/web-pages"><i class="${font:far()} fa-sticky-note fa-fw"></i> <span>Web Pages</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/image')}"> class="is-active"</c:if>><a href="${ctx}/admin/images"><i class="${font:far()} fa-image fa-fw"></i> <span>Images</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/content-list')}"> class="is-active"</c:if>><a href="${ctx}/admin/content-list"><i class="${font:far()} fa-th fa-fw"></i> <span>Content</span></a></li>
@@ -441,6 +461,7 @@
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/calendar')}"> class="is-active"</c:if>><a href="${ctx}/admin/calendars"><i class="${font:far()} fa-calendar fa-fw"></i> <span>Calendars</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/folder')}"> class="is-active"</c:if>><a href="${ctx}/admin/folders"><i class="${font:far()} fa-copy fa-fw"></i> <span>Files &amp; Folders</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/wiki')}"> class="is-active"</c:if>><a href="${ctx}/admin/wikis"><i class="${font:far()} fa-file fa-fw"></i> <span>Wikis</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/useful-links')}"> class="is-active"</c:if>><a href="${ctx}/admin/useful-links"><i class="${font:far()} fa-file fa-fw"></i> <span>Useful Links</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/sticky-footer-links')}"> class="is-active"</c:if>><a href="${ctx}/admin/sticky-footer-links"><i class="${font:far()} fa-file fa-fw"></i> <span>Sticky Page Buttons</span></a></li>
             </ul>
           </c:if>
@@ -475,7 +496,10 @@
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/api')}"> class="is-active"</c:if>><a href="${ctx}/admin/apis"><i class="${font:far()} fa-paper-plane fa-fw"></i> <span>APIs</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/app')}"> class="is-active"</c:if>><a href="${ctx}/admin/apps"><i class="${font:far()} fa-mobile fa-fw"></i> <span>Apps</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/blocked-ip-list')}"> class="is-active"</c:if>><a href="${ctx}/admin/blocked-ip-list"><i class="${font:far()} fa-shield-halved fa-fw"></i> <span>Blocked IPs</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/allowed-ip-list')}"> class="is-active"</c:if>><a href="${ctx}/admin/allowed-ip-list"><i class="${font:far()} fa-shield fa-fw"></i> <span>Allowed IPs</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/role-capabilities')}"> class="is-active"</c:if>><a href="${ctx}/admin/role-capabilities"><i class="${font:far()} fa-user-lock fa-fw"></i> <span>Role Capabilities</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/audit-log')}"> class="is-active"</c:if>><a href="${ctx}/admin/audit-log"><i class="${font:far()} fa-clipboard-list fa-fw"></i> <span>Audit Log</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/analytics-retention')}"> class="is-active"</c:if>><a href="${ctx}/admin/analytics-retention"><i class="${font:far()} fa-trash-can fa-fw"></i> <span>Analytics Retention</span></a></li>
             </ul>
           </c:if>
           <%-- Settings menu --%>
@@ -484,9 +508,13 @@
               <li class="section-title">Settings</li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/theme')}"> class="is-active"</c:if>><a href="${ctx}/admin/theme-properties"><i class="${font:far()} fa-palette fa-fw"></i> <span>Theme</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/site-properties')}"> class="is-active"</c:if>><a href="${ctx}/admin/site-properties"><i class="${font:far()} fa-rocket fa-fw"></i> <span>Site Settings</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/mfa')}"> class="is-active"</c:if>><a href="${ctx}/admin/mfa-properties"><i class="${font:far()} fa-lock fa-fw"></i> <span>MFA Settings</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/social')}"> class="is-active"</c:if>><a href="${ctx}/admin/social-media-settings"><i class="${font:far()} fa-thumbs-up fa-fw"></i> <span>Social Media</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/configure-analytics')}"> class="is-active"</c:if>><a href="${ctx}/admin/configure-analytics"><i class="${font:far()} fa-chart-line fa-fw"></i> <span>Analytics Settings</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/captcha')}"> class="is-active"</c:if>><a href="${ctx}/admin/captcha-properties"><i class="${font:far()} fa-key fa-fw"></i> <span>Captcha Settings</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/robots')}"> class="is-active"</c:if>><a href="${ctx}/admin/robots-properties"><i class="${font:far()} fa-robot fa-fw"></i> <span>Robots &amp; Crawlers</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/seo-overview')}"> class="is-active"</c:if>><a href="${ctx}/admin/seo-overview"><i class="${font:far()} fa-magnifying-glass-chart fa-fw"></i> <span>SEO &amp; AI Visibility</span></a></li>
+              <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/seo-sitemap')}"> class="is-active"</c:if>><a href="${ctx}/admin/seo-sitemap"><i class="${font:far()} fa-map fa-fw"></i> <span>SEO Sitemap</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/bi')}"> class="is-active"</c:if>><a href="${ctx}/admin/bi-properties"><i class="${font:far()} fa-table-columns fa-fw"></i> <span>BI Settings</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/ecommerce')}"> class="is-active"</c:if>><a href="${ctx}/admin/ecommerce-properties"><i class="${font:far()} fa-shopping-cart fa-fw"></i> <span>E-commerce Settings</span></a></li>
               <li<c:if test="${fn:startsWith(pageRenderInfo.name, '/admin/elearning')}"> class="is-active"</c:if>><a href="${ctx}/admin/elearning-properties"><i class="${font:far()} fa-chalkboard-teacher fa-fw"></i> <span>E-learning Settings</span></a></li>
@@ -838,6 +866,7 @@
     <c:if test="${!empty analyticsPropertyMap['analytics.brandcdn.value'] && !empty analyticsPropertyMap['analytics.brandcdn.value2']}">
       <script type="text/javascript" src="//tag.brandcdn.com/autoscript/${js:escape(analyticsPropertyMap['analytics.brandcdn.value'])}/${js:escape(analyticsPropertyMap['analytics.brandcdn.value2'])}" nonce="${cspNonce}"></script>
     </c:if>
+    <script src="${ctx}/javascript/web-vitals-collector.js?v=<%= VERSION %>" nonce="${cspNonce}"></script>
   </c:if>
   <c:if test="${analyticsPropertyMap['analytics.consentRequired'] eq 'true' and cookie['analytics-consent'].value ne 'accepted' and cookie['analytics-consent'].value ne 'declined'}">
     <div id="analytics-consent-banner" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#1a1a1a;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -862,7 +891,6 @@
   <c:if test="${pageEditMode eq 'true'}">
     <script src="${ctx}/javascript/quill-2.0.3/quill.js"></script>
     <script src="${ctx}/javascript/platform-editor.js?v=<%= VERSION %>"></script>
-    <script src="${ctx}/javascript/overlay-editor-pane.js"></script>
     <%@include file="visual-editor/media-library-panel.jsp" %>
   </c:if>
 </body>

@@ -37,11 +37,26 @@ public class WebPage extends Entity {
   private String description = null;
   private String imageUrl = null;
   private boolean draft = false;
-  private boolean enabled = false;
-  private boolean searchable = false;
-  private boolean showInSitemap = false;
+  // enabled, searchable, and showInSitemap each match their column's own DEFAULT true
+  // (NEW_10010__new_cms.sql) -- every save path (WebPageFormWidget.post(), WebPageRepository's
+  // insert/update) writes these values explicitly, so the SQL defaults were otherwise dead code.
+  // Every page created through the app -- not the install/ seed data, which sets its own values
+  // directly in SQL -- got these silently false: enabled is never even exposed as a form field
+  // (so no page created through the CMS was ever enabled, which also gates
+  // WebPageRepository.search() -- new pages were unfindable there too, not just in the sitemap);
+  // searchable and showInSitemap are exposed as form toggles, but a blank/unchecked submission
+  // (the default state for a brand-new page's render of the form) explicitly writes false.
+  private boolean enabled = true;
+  private boolean searchable = true;
+  private boolean showInSitemap = true;
   private String sitemapChangeFrequency = null;
-  private BigDecimal sitemapPriority = new BigDecimal(0);
+  // sitemapPriority is the same bug in a field the 726dfe3d fix above didn't cover (it only
+  // audited booleans): the column declares DEFAULT 0.5, but every save path writes this field
+  // explicitly, so a brand-new page's first save got the Java default -- 0, not 0.5, the sitemap's
+  // documented "unset" priority -- with no admin ever having deliberately chosen it. SitemapServlet
+  // treats a stored 0 the same as "unset" for the same reason: fixing the default here only helps
+  // pages saved after this fix, not ones that already have 0 stored.
+  private BigDecimal sitemapPriority = new BigDecimal("0.5");
   //  private boolean showPageHeader = false;
   //  private boolean showPageFooter = false;
   //  private long popupId = -1;
@@ -268,5 +283,21 @@ public class WebPage extends Entity {
 
   public void setExpiresAt(Timestamp expiresAt) {
     this.expiresAt = expiresAt;
+  }
+
+  /**
+   * True when this page has a publishAt date set in the future (matches the "not yet live"
+   * semantics used by WebPageRepository.countScheduledNotYetLive())
+   */
+  public boolean isScheduled() {
+    return publishAt != null && publishAt.getTime() > System.currentTimeMillis();
+  }
+
+  /**
+   * True when this page has an expiresAt date set in the future (matches the "not yet happened"
+   * semantics used by WebPageRepository.countExpiringSoon())
+   */
+  public boolean isExpiringSoon() {
+    return expiresAt != null && expiresAt.getTime() > System.currentTimeMillis();
   }
 }

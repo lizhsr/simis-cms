@@ -70,22 +70,22 @@
     <load-on-startup>1</load-on-startup>
   </servlet>
   <servlet>
+    <servlet-name>MediaApi</servlet-name>
+    <servlet-class>com.simisinc.platform.presentation.controller.MediaApiController</servlet-class>
+  </servlet>
+  <servlet>
     <servlet-name>StylesheetServlet</servlet-name>
     <servlet-class>com.simisinc.platform.presentation.controller.StylesheetServlet</servlet-class>
     <load-on-startup>1</load-on-startup>
   </servlet>
-  <!--
   <servlet>
-    <servlet-name>SitemapXmlServlet</servlet-name>
-    <servlet-class>com.simisinc.platform.presentation.controller.SitemapXmlServlet</servlet-class>
-    <load-on-startup>1</load-on-startup>
+    <servlet-name>RobotsServlet</servlet-name>
+    <servlet-class>com.simisinc.platform.presentation.controller.RobotsServlet</servlet-class>
   </servlet>
-  -->
   <!-- Mappings -->
   <servlet-mapping>
     <servlet-name>default</servlet-name>
     <!--<url-pattern>/favicon.*</url-pattern>-->
-    <url-pattern>/robots.txt</url-pattern>
     <!-- For Letsencrypt.org -->
     <url-pattern>/.well-known/acme-challenge/*</url-pattern>
     <!-- For BingBot Webmaster -->
@@ -98,6 +98,10 @@
     <url-pattern>/javascript/*</url-pattern>
   </servlet-mapping>
   <servlet-mapping>
+    <servlet-name>RobotsServlet</servlet-name>
+    <url-pattern>/robots.txt</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
     <servlet-name>PageServlet</servlet-name>
     <url-pattern>/</url-pattern>
   </servlet-mapping>
@@ -107,16 +111,14 @@
     <url-pattern>/api/*</url-pattern>
   </servlet-mapping>
   <servlet-mapping>
+    <servlet-name>MediaApi</servlet-name>
+    <url-pattern>/visual-editor/media</url-pattern>
+    <url-pattern>/visual-editor/media/*</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
     <servlet-name>StylesheetServlet</servlet-name>
     <url-pattern>/css/custom/*</url-pattern>
   </servlet-mapping>
-  <!--
-  <servlet-mapping>
-    <servlet-name>SitemapXmlServlet</servlet-name>
-    <url-pattern>/sitemap.xml</url-pattern>
-    <url-pattern>/sitemap-review.xml</url-pattern>
-  </servlet-mapping>
-  -->
   <!-- Sessions -->
   <session-config>
     <session-timeout>60</session-timeout>
