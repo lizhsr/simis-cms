@@ -72,7 +72,7 @@
     <jackson-coreutils.version>1.8</jackson-coreutils.version>
     <jackson-databind.version>2.22.1</jackson-databind.version>
     <!-- Jackson 3 (tools.jackson.*) — required by Flyway 12; coexists with the Jackson 2 above -->
-    <jackson3.version>3.2.1</jackson3.version>
+    <jackson3.version>3.2.3</jackson3.version>
     <java-activation.version>1.2.0</java-activation.version>
     <java-mail.version>1.6.2</java-mail.version>
     <jmail.version>2.1.0</jmail.version>
