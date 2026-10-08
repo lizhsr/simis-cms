@@ -68,7 +68,7 @@
     <!-- <guava.version>32.1.1</guava.version> -->
     <hikaricp.version>7.1.0</hikaricp.version>
     <im4java.version>1.4.0</im4java.version>
-    <jackson.version>2.22.1</jackson.version>
+    <jackson.version>2.22.3</jackson.version>
     <jackson-coreutils.version>1.8</jackson-coreutils.version>
     <jackson-databind.version>2.22.1</jackson-databind.version>
     <!-- Jackson 3 (tools.jackson.*) — required by Flyway 12; coexists with the Jackson 2 above -->
